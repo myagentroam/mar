@@ -39,6 +39,11 @@ export class NodeStream implements AsyncIterable<Uint8Array> {
     return this.#finished.promise;
   }
 
+  /** Distinguishes failure from normal FIN when a consumer is blocked outside the stream. */
+  get failed(): boolean {
+    return this.#failure !== undefined;
+  }
+
   async write(bytes: Uint8Array): Promise<void> {
     if (this.#failure !== undefined) throw this.#failure;
     if (this.#sentFin || this.#writing) throw new Error('NODE_STREAM_WRITE_STATE');

@@ -180,7 +180,17 @@ export function registerRealtimeRoutes(input: {
               nodeId,
               { userId: user.userId, sessionHash: user.sessionHash },
               bearer?.expiresAt,
-              !normalAccess
+              !normalAccess,
+              bearer === undefined
+                ? undefined
+                : async () => {
+                    // A carrier can outlive the credentials that admitted it. Check only the
+                    // forwarding lease, not each TCP connection underneath it.
+                    return (
+                      (await relayAccess.canUseNode(user.userId, nodeId)) &&
+                      (await relayAccess.credentials.authenticateContext(header)) !== undefined
+                    );
+                  }
             );
           })()
             .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))

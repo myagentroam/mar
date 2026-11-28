@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-11-27
+lastUpdated: 2026-11-28
 ---
 
 # Manage Nodes with marctl
@@ -188,6 +188,22 @@ marctl scp linux:///absolute/path/artifact.bin windows://C:\absolute\path\artifa
 The CLI uses an available direct path to the Node or the Server relay. It can switch paths before attachment without creating or running the command twice. The Server authorizes either transport, and commands always run as the **Node service account**. An enterprise ADMIN can operate their own personal Nodes and every organization Node, but cannot use another user's personal Node terminal.
 
 `scp` transfers a single regular file between this machine and an accessible Node, or between two accessible Nodes. A Node endpoint uses `<node-id|node-name>://<absolute-path>` or `node:<absolute-path>`; names must be unique among accessible Nodes, so use an ID if names collide. A path without a Node prefix is local. Like standard `scp`, an existing regular destination file is overwritten by default without a special flag; its permissions are retained. `-p` preserves the source's mode and access/modify times; `-q` keeps progress output quiet (already the default). Other SCP options, including `-r` and SSH connection options, are rejected, not silently ignored. An existing real destination directory receives the source filename automatically; you do not need to specify the full destination filename. A directory target ending in a separator must already exist: no directory or same-named file is created. Directory sources, symlink sources or targets, and a final path inside the destination directory that is itself a directory or symlink are refused. Source filenames invalid on the receiving platform are also rejected. A verified copy is published atomically; transfer failure does not replace the original, though forced termination can leave a temporary file. The Node starts its built-in copy worker without a remote shell. The file contents travel over the authorized Terminal binary connection, **not** the system SCP protocol. Upgrade the CLI, Server, and Node together; there is no fallback to shell-based startup or the text protocol. File access uses each Node's service account permissions. Quote paths containing spaces for your local shell; Windows Node paths can use `C:\absolute\path` after `://`.
+
+## Forward a TCP port
+
+Run from a terminal or Agent execution with `marctl` credentials. Put `-N -L [bind:]port:host:hostport` or `-N -R [bind:]port:host:hostport` before the Node name. Each command forwards one port without running a remote shell.
+
+```bash
+marctl ssh -N -L 18080:127.0.0.1:8080 <node-id>
+marctl ssh -N -R 19080:127.0.0.1:8080 <node-id>
+```
+
+- With `-L`, the machine running the CLI listens, and the Node connects to the target. This example targets the Node's own `127.0.0.1:8080`.
+- With `-R`, the Node listens, and the machine running the CLI connects to the target. This example targets that machine's own `127.0.0.1:8080`.
+
+The target can be a hostname or IP address and is resolved by the machine that connects to it. The listener defaults to `127.0.0.1`. You can specify a local address, use `*` or an empty bind field for all IPv4 interfaces, or use `[::]` as the IPv6 wildcard. Bracket IPv6 literals on either side, for example `-R '[::]:19080:[::1]:8080'`. Both directions use the same credentials and Node access as `marctl ssh` and go through MAR Server Relay, with no additional Node configuration. Any host or process that can reach the listener can use it; forwarding does not authenticate incoming TCP clients.
+
+Press Ctrl+C to stop foreground forwarding. Use `-fN` to run in the background, for example `marctl ssh -fN -L 18080:localhost:8080 <node-id>`. The command prints the PID and exits when the listener is ready. Stop it with a system process tool such as `kill <PID>`. An occupied port fails startup. Revocation or disconnection closes the forward without automatically reconnecting.
 
 ## Use a remote desktop
 

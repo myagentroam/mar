@@ -40,6 +40,8 @@ import type {
 import type { NodeRequestBroker } from './service/node-request-broker.js';
 import { WorkspaceFileStreamTickets } from './service/workspace-file-stream-tickets.js';
 import { FileStreamTickets } from './service/file-stream-tickets.js';
+import { TcpForwardRelay } from './service/tcp-forward-relay.js';
+import { tcpForwardControlKind, tcpForwardDataKind } from '@myagentroam/protocol/tcp-forward';
 import type { HostedFileStreamTicket } from '@myagentroam/server-core/hosted-conversation-routes';
 import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
 import type { UserNodeAuthorization } from '@myagentroam/server-core/node-access-contracts';
@@ -163,6 +165,7 @@ export class NodeControl extends NodeIdentityControl {
   private readonly terminalRelay: TerminalRelayService;
   private readonly fileRelay: NodeFileRelay;
   private readonly dataRelay: NodeRelayChannel;
+  private readonly tcpForwardRelay = new TcpForwardRelay();
   private readonly fileStreamTickets: WorkspaceFileStreamTickets;
   private readonly hostedFileTickets: FileStreamTickets<HostedFileStreamTicket>;
   private readonly dataClients = new Map<WebSocket, UserNodeAuthorization>();
@@ -475,7 +478,8 @@ export class NodeControl extends NodeIdentityControl {
     nodeId: string,
     user: UserNodeAuthorization,
     cliExpiresAt?: number,
-    hostedOnly = false
+    hostedOnly = false,
+    allowTcpForward?: () => Promise<boolean>
   ): void {
     if (socket.readyState !== socket.OPEN) return;
     if (cliExpiresAt !== undefined && cliExpiresAt <= Date.now()) {
@@ -492,7 +496,13 @@ export class NodeControl extends NodeIdentityControl {
       clearTimeout(expiry);
       this.dataClients.delete(socket);
     });
+    const forward =
+      cliExpiresAt !== undefined && !hostedOnly && allowTcpForward !== undefined
+        ? this.tcpForwardRelay.forCarrier(allowTcpForward)
+        : undefined;
     this.dataRelay.attachClient(socket, nodeId, async ({ kind, grant }, signal) => {
+      if (kind === tcpForwardControlKind || kind === tcpForwardDataKind)
+        return forward?.({ kind, grant }, signal);
       if (
         (kind === 'hosted-file-upload' || kind === 'hosted-file-download') &&
         cliExpiresAt === undefined
@@ -656,6 +666,7 @@ export class NodeControl extends NodeIdentityControl {
 
   closeAllTerminals(): void {
     this.terminalRelay.closeAllRelays();
+    this.tcpForwardRelay.revokeAll();
   }
 
   revalidateHostedFileAuthorizations(): Promise<void> {
@@ -667,6 +678,7 @@ export class NodeControl extends NodeIdentityControl {
       this.terminalRelay.revalidateAuthorizations(),
       this.fileStreamTickets.revalidate(),
       this.browser?.revalidateFileAuthorizations(),
+      this.tcpForwardRelay.revalidate(),
       this.revalidateHostedFileAuthorizations()
     ]);
   }

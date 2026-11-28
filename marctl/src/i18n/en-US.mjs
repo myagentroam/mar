@@ -174,6 +174,10 @@ Arguments:
 
 Options (before <node>):
   --no-reuse       Bypass the connection pool for this invocation; keep direct connections enabled.
+  -N               Do not run a command; required for port forwarding.
+  -f               Run forwarding in the background and print its PID when ready.
+  -L [bind:]port:host:hostport  Listen here; connect to the target from the Node.
+  -R [bind:]port:host:hostport  Listen on the Node; connect to the target from here.
   -h, --help       Show help and exit.
   -V, --version    Print the CLI package version and exit.
 
@@ -181,6 +185,7 @@ Examples:
   {program} ubuntu-develop
   {program} ubuntu-develop uname -a
   {program} ubuntu-develop "echo hello && whoami"
+  {program} -fN -L 18080:localhost:8080 ubuntu-develop
 
 Notes:
   Names must be unique across accessible Nodes, including offline Nodes; use an ID on conflict.
@@ -191,6 +196,7 @@ Notes:
   Connection setup has a timeout, but attached commands have no runtime or output-idle timeout.
   Commands are not retried. Exit or unrecoverable disconnection closes the terminal;
   this is not a background-job service.
+  Forwarding uses Node Relay and the same Node access as remote commands.
 
 ${configurationHelp}`,
     scp: `{program} — Copy a regular file
@@ -254,6 +260,8 @@ No configuration, authorization, or Server connection is required.`
   nodesHeader: 'ID\tNAME\tSTATUS\tPLATFORM',
   connected: 'connected',
   disconnected: 'disconnected',
+  tcpForwardReady: 'Forwarding is ready on {address}. Press Ctrl+C to stop.',
+  tcpForwardBackgroundReady: 'Forwarding is ready on {address} in the background (PID {pid}).',
   errors: Object.freeze({
     sessionOutcomeUnknown:
       'The delivery outcome is unknown. Inspect Session state/history before retrying.',
@@ -320,6 +328,9 @@ No configuration, authorization, or Server connection is required.`
     invalidArguments: 'Invalid command arguments.',
     sessionDeliveryRequired: 'Send requires exactly one of --steer or --queue, even when idle.',
     sshOptionsUnsupported: 'SSH options are not supported; use marssh <host>.',
+    tcpForwardArguments:
+      'Use -N and optionally -f with one -L or -R [bind:]port:host:hostport before the Node, without a command or --no-reuse.',
+    tcpForwardFailed: 'TCP forwarding failed or disconnected.',
     scpOptionsUnsupported: 'This SCP option is not supported by the Node Terminal transport.',
     scpOpenInvalid: 'Invalid copy parameters.',
     commandFailed: 'The command failed.'

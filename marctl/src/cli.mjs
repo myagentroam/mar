@@ -4,6 +4,8 @@ import { loadConfig } from './config.mjs';
 import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
 import { runTerminalSession } from './terminal.mjs';
+import { startBackgroundTcpForward } from './tcp-forward-background.mjs';
+import { parseTcpForward, runTcpForward, tcpForwardAddress } from './tcp-forward.mjs';
 import { runScp } from './scp.mjs';
 import { runComputer } from './computer.mjs';
 import { parseSessionArgs } from './session-args.mjs';
@@ -124,6 +126,35 @@ export async function main(
           translate
         })
       );
+    if (args.forward) {
+      const address = tcpForwardAddress(args.forward);
+      return await withCommandSignals(async (signal) => {
+        if (args.background) {
+          try {
+            const pid = await startBackgroundTcpForward({
+              nodeId,
+              forward: args.forward,
+              env,
+              translate,
+              signal
+            });
+            writeLine(stdout, translate('tcpForwardBackgroundReady', { address, pid }));
+            return 0;
+          } catch (error) {
+            if (signal.aborted) return signal.reason === 'SIGTERM' ? 143 : 130;
+            throw error;
+          }
+        }
+        return runTcpForward({
+          client: marctlClient,
+          nodeId,
+          forward: args.forward,
+          onReady: () => writeLine(stdout, translate('tcpForwardReady', { address })),
+          translate,
+          signal
+        });
+      });
+    }
     return await withCommandSignals((signal) =>
       runTerminalSession({
         client: marctlClient,
@@ -167,6 +198,10 @@ export async function main(
       writeLine(stderr, `${program}: ${error.message} [${error.code}]`);
       return error.code === 'OUTCOME_UNKNOWN' ? 6 : 1;
     }
+    if (args?.forward && error instanceof MarctlError && error.code !== undefined) {
+      writeLine(stderr, `${program}: ${error.message} [${error.code}]`);
+      return 1;
+    }
     writeLine(
       stderr,
       `${program}: ${error instanceof MarctlError ? error.message : translate('errors.commandFailed')}`
@@ -204,6 +239,9 @@ export function parseArgs(argv, translate = createTranslator()) {
   let version = false;
   let preserve = false;
   let noReuse = false;
+  let forward;
+  let forwardOnly = false;
+  let background = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -242,6 +280,21 @@ export function parseArgs(argv, translate = createTranslator()) {
       noReuse = true;
       continue;
     }
+    if (command === 'ssh' && !separator && nodeId === undefined) {
+      // Like SSH, options without a value can be grouped before an option that takes one.
+      const options = argument.length > 1 && /^-([fN]*)(?:([LR])(.*))?$/u.exec(argument);
+      if (options) {
+        const [, flags, direction, inline] = options;
+        background ||= flags.includes('f');
+        forwardOnly ||= flags.includes('N');
+        if (direction !== undefined) {
+          if (forward !== undefined) throw new MarctlError(translate('errors.tcpForwardArguments'));
+          forward = parseTcpForward(`-${direction}`, inline || argv[++index]);
+          if (forward === undefined) throw new MarctlError(translate('errors.tcpForwardArguments'));
+        }
+        continue;
+      }
+    }
     if (command === 'scp') {
       if (!separator && argument.startsWith('-') && argument !== '-') {
         if (!/^-[pq]+$/u.test(argument))
@@ -266,6 +319,11 @@ export function parseArgs(argv, translate = createTranslator()) {
 
   if (help) return { help: true, ...(command === undefined ? {} : { command }) };
   if (version || command === 'version') return { version: true };
+  if (forwardOnly || forward !== undefined || background) {
+    if (!forwardOnly || !forward || !nodeId || remoteArgs.length !== 0 || noReuse)
+      throw new MarctlError(translate('errors.tcpForwardArguments'));
+    return { command, nodeId, forward, ...(background ? { background } : {}) };
+  }
   if (command === 'nodes' && nodeId === undefined && remoteArgs.length === 0) return { command };
   const relayOptions = noReuse ? { noReuse: true } : {};
   if (command === 'computer' && nodeId && remoteArgs.length === 1 && remoteArgs[0])

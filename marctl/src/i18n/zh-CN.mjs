@@ -165,6 +165,10 @@ ${configurationHelp}`,
 
 选项（放在节点前）：
   --no-reuse       仅本次调用绕过连接池，不禁用直连。
+  -N               不执行远端命令；端口转发时必填。
+  -f               在后台运行转发，监听就绪后打印 PID。
+  -L [监听地址:]端口:主机:目标端口  本机监听，由 Node 连接目标。
+  -R [监听地址:]端口:主机:目标端口  Node 监听，由本机连接目标。
   -h, --help       显示帮助后退出。
   -V, --version    显示 CLI 包版本后退出。
 
@@ -172,6 +176,7 @@ ${configurationHelp}`,
   {program} ubuntu-develop
   {program} ubuntu-develop uname -a
   {program} ubuntu-develop "echo hello && whoami"
+  {program} -fN -L 18080:localhost:8080 ubuntu-develop
 
 说明：
   名称须在可访问节点中唯一（包括离线节点），重名时使用 ID。
@@ -180,6 +185,7 @@ ${configurationHelp}`,
   命令以 Node 服务账号运行，不支持登录账号、提权及 -t、-p、-i 等 SSH 连接选项；无需 SSH 端口。
   建连有超时，附着后的命令没有运行时长或输出空闲超时。命令不自动重试。
   退出或连接无法恢复时关闭终端，不提供后台任务托管。
+  端口转发使用 Node Relay，与远程命令使用相同的 Node 权限。
 
 ${configurationHelp}`,
     scp: `{program} — 复制普通文件
@@ -240,6 +246,8 @@ ${configurationHelp}`,
   nodesHeader: '节点 ID\t名称\t状态\t平台',
   connected: '在线',
   disconnected: '离线',
+  tcpForwardReady: '端口转发已在 {address} 就绪。按 Ctrl+C 停止。',
+  tcpForwardBackgroundReady: '端口转发已在 {address} 后台就绪（PID {pid}）。',
   errors: Object.freeze({
     sessionOutcomeUnknown: '投递结果未知，请先查看会话状态和历史，不要盲目重试。',
     sessionMessageInvalid: '消息不能为空或超过长度限制；输入文件必须是可读取的 UTF-8 文本。',
@@ -299,6 +307,9 @@ ${configurationHelp}`,
     invalidArguments: '命令参数无效。',
     sessionDeliveryRequired: 'send 必须且只能选择 --steer 或 --queue，即使目标空闲也需指定。',
     sshOptionsUnsupported: '不支持 SSH 选项，请使用 marssh <节点>。',
+    tcpForwardArguments:
+      '在节点前指定 -N、可选的 -f 和一组 -L 或 -R [监听地址:]端口:主机:目标端口，不附带远端命令或 --no-reuse。',
+    tcpForwardFailed: 'TCP 端口转发失败或已断开。',
     scpOptionsUnsupported: 'Node Terminal 传输不支持此 SCP 选项。',
     scpOpenInvalid: '复制参数无效。',
     terminalBinaryUnavailable: '二进制复制需要支持 pipe 终端的 Server 与 Node。',
