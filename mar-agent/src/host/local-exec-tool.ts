@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { addAbortListener } from 'node:events';
 import { RuntimeResourceHandles } from '../tools/runtime-resource-handles.js';
 import { StringDecoder } from 'node:string_decoder';
 import { AgentError } from '../error.js';
@@ -173,7 +174,7 @@ export class ExecTool {
             'MAR_AGENT_TOOL_INPUT_INVALID',
             'Completed process cannot accept input.'
           );
-        process.child.stdin.write(input.data);
+        await writeProcessInput(process.child.stdin, input.data, signal);
       }
       if (input.action === 'cancel') {
         // Mark before awaiting termination so concurrent collection cannot evict another replay.
@@ -320,6 +321,8 @@ export class ExecTool {
         });
       }
       if (!native) {
+        // The write callback reports the call failure, but Node also emits a separate error event.
+        child.stdin.on('error', () => {});
         const listen = (name: 'stdout' | 'stderr') =>
           child[name].on('data', (chunk: Buffer) => {
             if (managed.finalized) return;
@@ -928,6 +931,35 @@ function watchProcessOutput(
   managed.outputSubscription = subscription;
   if (initialSnapshot) schedule();
   return subscription.stop;
+}
+
+async function writeProcessInput(
+  stdin: ChildProcessWithoutNullStreams['stdin'],
+  data: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const failure = (reasonCode: string) =>
+    new AgentError('MAR_AGENT_PROCESS_IO_FAILED', 'Managed process input failed.', {
+      details: { reasonCode }
+    });
+  if (signal?.aborted) throw executionAbortReason(signal);
+  if (!stdin.writable) throw failure('STDIN_CLOSED');
+  let listener: Disposable | undefined;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      // Cancel only the wait; bytes already submitted to the pipe cannot be withdrawn.
+      if (signal) listener = addAbortListener(signal, () => reject(executionAbortReason(signal)));
+      try {
+        stdin.write(data, (error?: NodeJS.ErrnoException | null) =>
+          error ? reject(failure(error.code ?? 'UNKNOWN')) : resolve()
+        );
+      } catch (error) {
+        reject(failure((error as NodeJS.ErrnoException | undefined)?.code ?? 'UNKNOWN'));
+      }
+    });
+  } finally {
+    listener?.[Symbol.dispose]();
+  }
 }
 
 function executionAbortReason(signal?: AbortSignal): unknown {
