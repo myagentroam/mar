@@ -106,7 +106,7 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
       userAgent: boundedUserAgent(request.headers['user-agent'])
     });
     for (const sessionHash of session.evictedSessionHashes) {
-      await lifecycle.closeSessionConnections(sessionHash);
+      await lifecycle.invalidateSessionAccess(sessionHash);
     }
     if (session.evictedSessionHashes.length > 0) {
       await audit.record({
@@ -239,7 +239,7 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
         request.params.sessionId
       );
       if (sessionHash === undefined) return sendError(reply, 404, 'USER_SESSION_NOT_FOUND');
-      await lifecycle.closeSessionConnections(sessionHash);
+      await lifecycle.invalidateSessionAccess(sessionHash);
       await audit.record({
         eventType: 'user_session_revoked',
         actorUserId: current.userId,
@@ -285,8 +285,14 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
     } catch {
       return sendError(reply, 400, 'PASSWORD_POLICY_VIOLATION');
     }
-    await store.changePassword(current.userId, password, 'password_changed', requestIp(request));
-    await lifecycle.closeAllConnections();
+    const revokedSessionHashes = await store.changePassword(
+      current.userId,
+      password,
+      'password_changed',
+      requestIp(request)
+    );
+    for (const sessionHash of revokedSessionHashes)
+      await lifecycle.invalidateSessionAccess(sessionHash);
     const session = await store.createUserSession(current.userId, {
       ipAddress: requestIp(request),
       userAgent: boundedUserAgent(request.headers['user-agent'])
@@ -315,7 +321,7 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
       return sendError(reply, 403, 'CSRF_INVALID');
     }
     await store.revokeSession(sessionId);
-    await lifecycle.closeSessionConnections(current.sessionHash);
+    await lifecycle.invalidateSessionAccess(current.sessionHash);
     await audit.record({
       eventType: 'logout',
       actorUserId: current.userId,

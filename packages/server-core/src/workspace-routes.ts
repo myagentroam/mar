@@ -293,7 +293,11 @@ export function registerWorkspaceRoutes(input: {
           ...(displayName === undefined ? {} : { displayName: displayName.trim() })
         }
       );
-      await nodeControl.revalidateDataAuthorizations();
+      if (ownership !== undefined)
+        await nodeControl.revalidateDataAuthorizations({
+          nodeId: request.query.nodeId,
+          workspaceId: request.params.workspaceId
+        });
       return reply.send({
         ...(ownership === undefined ? {} : { ownership }),
         ...(displayName === undefined ? {} : { displayName: displayName.trim() })

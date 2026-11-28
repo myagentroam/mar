@@ -27,7 +27,6 @@ import { displayConversationItem } from '../util/conversation-domain.js';
 import { createWorkbenchComposerController } from './workbench-composer-controller.js';
 import { createComposerAttachmentInputService } from './composer-attachment-input-service.js';
 import { createConversationImageService } from './conversation-image-service.js';
-import { filePreviewErrorMessage } from '../util/error-presentation.js';
 import { copyConversationMessage } from './workbench-conversation-copy-service.js';
 import { createWorkbenchEventProjectionService } from './workbench-event-projection-service.js';
 import {
@@ -439,8 +438,7 @@ export function createWorkspaceSessionPaneController(
         revalidate: (file) =>
           options.files.attachments(state.workspaceTarget.value!).revalidate(file),
         sourceUrl: (file, revision) =>
-          options.files.attachments(state.workspaceTarget.value!).sourceUrl(file, revision),
-        onError: (error, path) => showMessage(filePreviewErrorMessage(error, path), 'error', error)
+          options.files.attachments(state.workspaceTarget.value!).sourceUrl(file, revision)
       }
     }
   );

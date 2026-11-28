@@ -342,6 +342,7 @@ function closeStandaloneFileWindow(): void {
       :conversation="page.interactions.conversationImagePreview"
       @clear-attachment="page.interactions.attachmentPreview = undefined"
       @clear-conversation="page.interactions.conversationImagePreview = undefined"
+      @conversation-close="page.interactions.invalidateConversationFilePreview"
       @conversation-error="page.interactions.handleConversationImagePreviewError"
     />
     <QuickOpenDialog

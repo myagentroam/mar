@@ -472,6 +472,82 @@ test('a valid Workspace attachment keeps its failed preview open for retry', asy
   expect(retries).toBe(2);
 });
 
+for (const closeEarly of [false, true]) {
+  test(`Workspace attachment validation runs inside the open preview (${closeEarly ? 'early close' : 'inline retry'})`, async ({
+    page
+  }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const retryGate = Promise.withResolvers<void>();
+    let validationRequests = 0;
+    const validation = page.waitForResponse('**/preview-fixture-check');
+    await page.route('**/preview-fixture-check', async (route) => {
+      if (++validationRequests === 1) {
+        await gate;
+        return route.fulfill({ status: closeEarly ? 200 : 404 });
+      }
+      await retryGate.promise;
+      return route.fulfill({ status: 200 });
+    });
+    await page.goto(
+      `${fixture.url}conversation-image-loading.html?first=small&attachment=1&attachment-check`
+    );
+    await page.evaluate(() => {
+      (window as unknown as { imageDecodeState: { block: boolean } }).imageDecodeState.block =
+        false;
+    });
+    const trigger = page.locator('.conversation-user-image-button');
+    const dialog = page.getByRole('dialog');
+    const close = dialog.getByRole('button', { name: 'Close this dialog' });
+    if (closeEarly)
+      await page.addStyleTag({
+        content: 'dialog[data-closing="true"] { animation-play-state: paused !important; }'
+      });
+    await trigger.press('Enter');
+    try {
+      await expect(dialog.locator('.file-preview-loading')).toBeVisible();
+      await expect(dialog.locator('img')).toHaveCount(0);
+      await expect(close).toBeFocused();
+      expect(requests.every((url) => url.includes('maxWidth=320&'))).toBe(true);
+      if (closeEarly) {
+        await page.keyboard.press('Escape');
+        await expect(dialog).toHaveAttribute('data-closing', 'true');
+      }
+    } finally {
+      release();
+    }
+    await validation;
+    if (closeEarly) {
+      await dialog.evaluate(async (element) => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
+        element.getAnimations().forEach((animation) => animation.finish());
+      });
+      await expect(dialog).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      expect(requests.every((url) => url.includes('maxWidth=320&'))).toBe(true);
+    } else {
+      await expect(dialog.getByText('File not found.')).toBeVisible();
+      await expect(dialog.locator('img')).toHaveCount(0);
+      await expect(close).toBeFocused();
+      await dialog.getByRole('button', { name: 'Retry', exact: true }).press('Enter');
+      try {
+        const busy = dialog.getByRole('button', { name: 'Loading…' });
+        await expect(busy).toHaveAttribute('aria-busy', 'true');
+        await expect(busy).toBeFocused();
+        await expect.poll(() => validationRequests).toBe(2);
+        await page.keyboard.press('Enter');
+      } finally {
+        retryGate.resolve();
+      }
+      await expect(dialog.locator('img')).toBeVisible();
+      await expect(close).toBeFocused();
+      expect(validationRequests).toBe(2);
+    }
+  });
+}
+
 for (const width of [1440, 390]) {
   test(`localized original-image action sits below the preview at ${width}px`, async ({
     page

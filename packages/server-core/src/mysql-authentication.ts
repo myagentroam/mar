@@ -34,6 +34,7 @@ export interface MysqlAuthenticationOptions {
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ACTIVE_USER_SESSIONS = 5;
 
+/** Owns MySQL login sessions and their in-process authentication projection. */
 export class MysqlAuthenticationStorage {
   private readonly sessionProjection = new Map<
     string,
@@ -61,6 +62,26 @@ export class MysqlAuthenticationStorage {
   invalidateUserSessions(userId: number): void {
     for (const [hash, projection] of this.sessionProjection)
       if (projection.current.userId === userId) this.sessionProjection.delete(hash);
+  }
+
+  /** Capture only the login identities revoked by the caller's transaction under the user lock. */
+  async revokeUserLoginSessions(
+    connection: Pick<PoolConnection, 'execute'>,
+    userId: number
+  ): Promise<readonly string[]> {
+    const [sessions] = await connection.execute<RowDataPacket[]>(
+      'SELECT session_hash FROM user_sessions WHERE user_id=? AND revoked_at IS NULL FOR UPDATE',
+      [userId]
+    );
+    await connection.execute(
+      'UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL',
+      [this.now(), userId]
+    );
+    return sessions.map((row) => String(row['session_hash']));
+  }
+
+  invalidateLoginSessions(hashes: readonly string[]): void {
+    for (const hash of hashes) this.sessionProjection.delete(hash);
   }
 
   async initializeAdmin(): Promise<void> {
@@ -313,7 +334,7 @@ export class MysqlAuthenticationStorage {
     password: string,
     eventType: 'password_changed' = 'password_changed',
     ipAddress?: string
-  ): Promise<void> {
+  ): Promise<readonly string[]> {
     const connection = await this.raw.getConnection();
     try {
       await connection.beginTransaction();
@@ -321,10 +342,7 @@ export class MysqlAuthenticationStorage {
         'UPDATE users SET password_hash=?, must_change_password=FALSE, updated_at=? WHERE id=?',
         [hashPassword(password), this.now(), userId]
       );
-      await connection.execute(
-        'UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL',
-        [this.now(), userId]
-      );
+      const hashes = await this.revokeUserLoginSessions(connection, userId);
       const event = {
         eventType,
         actorUserId: userId,
@@ -337,7 +355,8 @@ export class MysqlAuthenticationStorage {
       );
       await connection.commit();
       commitMysqlAudits(connection);
-      this.invalidateUserSessions(userId);
+      this.invalidateLoginSessions(hashes);
+      return hashes;
     } catch (error) {
       discardMysqlAudits(connection);
       await connection.rollback();

@@ -105,7 +105,7 @@ const fileWorkbench: ReturnType<typeof createWorkspaceFileWorkbenchController> =
     reveal: async () => {},
     onOpenFailure: () => {},
     onRevealFailure: () => {},
-    comparison: async () => undefined,
+    comparison: git.comparison,
     page: () => filePage,
     access(target) {
       const access = fixtureFileAccess(target);
@@ -251,6 +251,20 @@ createTooltipApp({
               })
             ])
           )
+      ]);
+    if (query.has('preview-preflight'))
+      return h('div', [
+        h(
+          'button',
+          { onClick: () => void fileWorkbench.openComparison('comparison.ts', 2) },
+          'Open comparison'
+        ),
+        h(
+          'button',
+          { onClick: () => void fileWorkbench.openComparison('.mar/temp-files/test/temp.ts') },
+          'Open temporary file'
+        ),
+        fileView()
       ]);
     if (query.has('html-handoff'))
       return h('div', [

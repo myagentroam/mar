@@ -1,4 +1,29 @@
-import type { ModelUsageGrant } from '@myagentroam/protocol';
+import {
+  isComposerAttachmentResourcePath,
+  type DirectTransferDescriptor,
+  type ModelUsageGrant
+} from '@myagentroam/protocol';
+
+export interface NodeResourceScope {
+  readonly nodeId: string;
+  readonly workspaceId?: string;
+}
+
+/** A Node grant may also provide effective access to Workspaces on that Node. */
+export function matchesNodeResource(scope: NodeResourceScope, target: NodeResourceScope): boolean {
+  return (
+    scope.nodeId === target.nodeId &&
+    (scope.workspaceId === undefined || scope.workspaceId === target.workspaceId)
+  );
+}
+
+/** Ordinary bytes are finite; staged writes still require a separately authorized commit. */
+export function isOrdinaryFileStream(descriptor: DirectTransferDescriptor): boolean {
+  return descriptor.direction === 'UPLOAD'
+    ? descriptor.uploadId !== undefined
+    : descriptor.resource.kind === 'GIT_COMMIT_BLOB' ||
+        !isComposerAttachmentResourcePath(descriptor.resource.path);
+}
 
 export interface UserNodeAuthorization {
   readonly usageGrant?: ModelUsageGrant | undefined;

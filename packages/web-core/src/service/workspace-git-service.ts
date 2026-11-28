@@ -637,6 +637,10 @@ export function createWorkspaceGitService(input: {
     if (!input.gitEnabled()) return undefined;
     await loadChanges();
     const entry = comparisonChange(visibleChanges.value, path);
+    // A cached match still identifies an existing Diff, but a failed refresh
+    // cannot establish that an unmatched file has no changes.
+    if (entry === undefined && changesError.value)
+      throw changesFailureCause.value ?? new Error('Unable to load Git changes.');
     return entry === undefined ? undefined : changeIntent(entry);
   }
   function adjacentDiff(tab: WorkspaceFileTab, direction: -1 | 1) {

@@ -95,6 +95,64 @@ test('dispatches the friendly executable names without changing marctl invocatio
   assert.deepEqual(executableArgs('/usr/local/bin/marctl', ['ssh', 'node-1']), ['ssh', 'node-1']);
 });
 
+test('parses one loopback forward without starting a remote command', () => {
+  for (const [flag, direction] of [
+    ['-L', 'local'],
+    ['-R', 'reverse']
+  ]) {
+    assert.deepEqual(parseArgs(['ssh', '-N', flag, '18080:127.0.0.1:8080', 'node-1']), {
+      command: 'ssh',
+      nodeId: 'node-1',
+      forward: {
+        direction,
+        listenHost: '127.0.0.1',
+        listenPort: 18080,
+        targetHost: '127.0.0.1',
+        targetPort: 8080
+      }
+    });
+  }
+  for (const args of [
+    ['-N'],
+    ['-f'],
+    ['-L', '18080:127.0.0.1:8080'],
+    ['-N', '-R', '19080:*:8080'],
+    ['-N', '-L', '0:127.0.0.1:8080'],
+    ['-N', '-R', '19080:127.0.0.1:65536'],
+    ['-N', '-L', '18080:127.0.0.1:8080', '-R', '19080:127.0.0.1:8080']
+  ])
+    assert.throws(() => parseArgs(['ssh', ...args, 'node-1']));
+  assert.throws(() => parseArgs(['ssh', '-N', '-R', '19080:127.0.0.1:8080', 'node-1', 'uname']));
+});
+
+test('parses SSH-style option groups, wildcard binds, and DNS or IPv6 targets', () => {
+  for (const [args, direction, listenHost, targetHost] of [
+    [['-fN', '-L', '*:18080:dev.internal:8080'], 'local', '0.0.0.0', 'dev.internal'],
+    [['-NfR[::]:18080:[::1]:8080'], 'reverse', '::', '::1'],
+    [['-fN', '-L:18080:localhost:8080'], 'local', '0.0.0.0', 'localhost'],
+    [['-f', '-N', '-Rlocalhost:18080:localhost:8080'], 'reverse', '127.0.0.1', 'localhost']
+  ]) {
+    assert.deepEqual(parseArgs(['ssh', ...args, 'node']), {
+      command: 'ssh',
+      nodeId: 'node',
+      background: true,
+      forward: {
+        direction,
+        listenHost,
+        listenPort: 18080,
+        targetHost,
+        targetPort: 8080
+      }
+    });
+  }
+  assert.throws(() => parseArgs(['ssh', '-N', '-R', '[bad]:18080:127.0.0.1:8080', 'node']));
+  assert.deepEqual(parseArgs(['ssh', 'node', 'test', '-f', 'file']), {
+    command: 'ssh',
+    nodeId: 'node',
+    remoteCommand: 'test -f file'
+  });
+});
+
 test('uses --no-reuse only before the first SSH, SCP, or computer operand', () => {
   assert.deepEqual(parseArgs(['ssh', '--no-reuse', 'node-1', 'uname', '-a']), {
     command: 'ssh',

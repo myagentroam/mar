@@ -14,6 +14,7 @@ import type { AuditEvent as AuditInput } from '../../packages/server-core/src/au
 import { createTestNodeControl, testNodeConsumers } from '../support/create-test-node-control.js';
 import { createTestNodeMessageProjector } from '../../packages/server-core/test/unit/support/node-message-projector.js';
 import { NodeRequestBroker } from '../../ee/server/src/service/node-request-broker.js';
+import { WorkspaceFileStreamTickets } from '../../ee/server/src/service/workspace-file-stream-tickets.js';
 import { NodeStreamRelay } from '../../packages/server-core/src/node-stream-relay.js';
 import { TerminalRelayService } from '../../packages/server-core/src/terminal-relay-service.js';
 import { WorkbenchRelayService } from '../../packages/server-core/src/workbench-relay-service.js';
@@ -28,6 +29,75 @@ import {
 import { registerOwnedNode } from './support/node-control-fixture.js';
 
 describe('Node controlled relay contract', () => {
+  it('lets an admitted staged upload finish its stream without authorizing its commit', async () => {
+    const nodeId = 'node';
+    const user = { userId: 7, sessionHash: 'fixture' };
+    const uploadId = '54b92a04-ee89-4393-8bc9-ccc6d132b9b0';
+    const resource = { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'file' } as const;
+    let allowed = true;
+    const send = vi.fn();
+    const broker = new NodeRequestBroker(
+      { audit: vi.fn() },
+      () => allowed,
+      () => ({ OPEN: 1, readyState: 1, send }) as never,
+      { allows: () => true },
+      testNodeBrokerServices()
+    );
+    const tickets = new WorkspaceFileStreamTickets({
+      allowed: () => allowed,
+      prepare: async () => ({ grant: '54b92a04-ee89-4393-8bc9-ccc6d132b9b1' })
+    });
+    const sendToNode = vi.fn<(frame: NodeStreamFrame) => void>();
+    const sendToClient = vi.fn<(frame: NodeStreamFrame) => void>();
+    const relay = new NodeStreamRelay(sendToNode, { perNode: 2, perClient: 2 });
+    const client = relay.attachClient(sendToClient, ({ grant, kind }, signal) =>
+      tickets.authorize(kind, grant, nodeId, user, signal)
+    );
+    try {
+      const ticket = await tickets.issue({
+        nodeId,
+        user,
+        descriptor: {
+          direction: 'UPLOAD',
+          uploadId,
+          resource,
+          sha256: 'a'.repeat(64),
+          fileName: 'file',
+          size: 1
+        }
+      });
+      client.receive(
+        encodeNodeStreamFrame({ type: 'OPEN', streamId: 1, kind: 'file-upload', grant: ticket })
+      );
+      await vi.waitFor(() => expect(sendToNode).toHaveBeenCalledOnce());
+      relay.receiveNode(encodeNodeStreamFrame({ type: 'OPENED', streamId: 1 }));
+      allowed = false;
+      await tickets.revalidateResource({ nodeId, workspaceId: resource.workspaceId });
+      const data = { type: 'DATA', streamId: 1, bytes: Uint8Array.of(42) } as const;
+      client.receive(encodeNodeStreamFrame(data));
+      client.receive(encodeNodeStreamFrame({ type: 'FIN', streamId: 1 }));
+      relay.receiveNode(encodeNodeStreamFrame({ type: 'FIN', streamId: 1 }));
+      expect(sendToNode.mock.calls.map(([frame]) => frame.type)).toEqual(['OPEN', 'DATA', 'FIN']);
+      expect(sendToClient.mock.calls.map(([frame]) => frame.type)).toEqual(['OPENED', 'FIN']);
+      await expect(
+        broker.request(
+          nodeId,
+          'workspace.files.upload.complete',
+          {
+            workspaceId: resource.workspaceId,
+            uploadId
+          },
+          user
+        )
+      ).rejects.toMatchObject({ code: 'NODE_ACCESS_DENIED' });
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      client.close();
+      tickets.close();
+      broker.close();
+    }
+  });
+
   it('rejects v1 schedule RPCs and run authorization without affecting current connections', async () => {
     const database = new ServerDatabase(':memory:');
     const userId = database.getAdmin().id;
@@ -1431,7 +1501,7 @@ describe('Node controlled relay contract', () => {
       relay.receiveNode(encodeNodeStreamFrame({ type: 'OPENED', streamId: 2 }));
       clientSend.mockClear();
       nodeSend.mockClear();
-      await terminal.revalidateAuthorizations();
+      await terminal.revalidateAuthorizations({ nodeId, workspaceId: 'workspace-denied' });
 
       const reset = { type: 'RESET', streamId: 2, code: 'RESOURCE_DENIED' };
       expect(clientSend).toHaveBeenCalledExactlyOnceWith(reset);
@@ -1439,7 +1509,7 @@ describe('Node controlled relay contract', () => {
       const data = { type: 'DATA', streamId: 1, bytes: Uint8Array.of(9) } as const;
       relay.receiveNode(encodeNodeStreamFrame(data));
       expect(clientSend).toHaveBeenLastCalledWith(data);
-      expect(allowed).toHaveBeenCalledWith(
+      expect(allowed).toHaveBeenCalledExactlyOnceWith(
         user.userId,
         nodeId,
         'terminal.attach.authorize',

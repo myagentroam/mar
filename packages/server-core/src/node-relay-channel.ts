@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-export type { NodeStreamAdmission } from './node-stream-relay.js';
+export type { NodeStreamAdmission, NodeStreamAuthorizer } from './node-stream-relay.js';
 import {
   decodeNodeRelayHandshake,
   encodeNodeRelayHandshake,

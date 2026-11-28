@@ -5,6 +5,8 @@ import { composeWorkspaceResources } from './application/workspace-composition.j
 import { composeRunners } from './application/runner-composition.js';
 import { ExecutionLifecycle } from './application/execution-lifecycle.js';
 import { NodeOperationAdmission } from './application/node-operation-admission.js';
+import { TcpForwardingService } from './service/tcp-forwarding-service.js';
+import { tcpForwardControlKind, tcpForwardDataKind } from '@myagentroam/protocol/tcp-forward';
 import { normalizeMarAgentUsage } from './runner/mar-agent/conversation-normalizer.js';
 import { NodeLifecycle } from './application/node-lifecycle.js';
 import { ScheduledExecutionService } from './application/scheduled-execution-service.js';
@@ -1818,21 +1820,24 @@ export class NodeConnector {
       reconnectDelay: nextReconnectDelay,
       request: (envelope, reply) => this.nodeRequests.handle(envelope, reply)
     });
+    const tcpForwarding = new TcpForwardingService();
     this.dataChannel = new NodeDataChannel({
       config: () => this.config,
       controlConnected: () => !this.stopped && this.controlChannel.connected(),
       reconnect: this.reconnect,
       reconnectDelay: nextReconnectDelay,
       accept: async ({ kind, grant }) =>
-        kind === 'terminal'
-          ? this.terminalService.streams.consume(grant)
-          : kind === 'hosted-file-upload' || kind === 'hosted-file-download'
-            ? this.conversationHosting.consumeFileStream(kind, grant)
-            : kind === 'browser-rfb'
-              ? this.browserService?.consumePictureStream(grant, { type: 'relay' })
-              : kind === 'browser-file-download' || kind === 'browser-file-upload'
-                ? this.browserService?.consumeFileStream(kind, grant)
-                : this.workspaceWorkbenchService.fileStreams.consume(kind, grant)
+        kind === tcpForwardControlKind || kind === tcpForwardDataKind
+          ? tcpForwarding.accept({ kind, grant })
+          : kind === 'terminal'
+            ? this.terminalService.streams.consume(grant)
+            : kind === 'hosted-file-upload' || kind === 'hosted-file-download'
+              ? this.conversationHosting.consumeFileStream(kind, grant)
+              : kind === 'browser-rfb'
+                ? this.browserService?.consumePictureStream(grant, { type: 'relay' })
+                : kind === 'browser-file-download' || kind === 'browser-file-upload'
+                  ? this.browserService?.consumeFileStream(kind, grant)
+                  : this.workspaceWorkbenchService.fileStreams.consume(kind, grant)
     });
     const workspaceApplication = composeWorkspaceApplication({
       config: () => this.config,

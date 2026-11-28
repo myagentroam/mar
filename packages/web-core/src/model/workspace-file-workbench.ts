@@ -24,6 +24,6 @@ export interface WorkspaceFilePagePort {
   captureDirtyDrafts(): readonly unknown[];
   hasPendingSave(): boolean;
   cursorPosition(id: number): { readonly line: number; readonly column: number } | undefined;
-  navigateTo(id: number, line: number, column?: number): void;
+  navigateTo(id: number, line: number, column?: number, moveFocus?: boolean): void;
   focusPage(id: number): boolean;
 }

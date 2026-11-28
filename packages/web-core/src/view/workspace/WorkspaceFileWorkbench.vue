@@ -15,6 +15,9 @@ import WorkspaceTextFilePage from './WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from './WorkspaceFormatFilePage.vue';
 import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import WorkspaceGitDiffPage from './WorkspaceGitDiffPage.vue';
+import FilePreviewLoading from './FilePreviewLoading.vue';
+import FilePreviewState from './FilePreviewState.vue';
+import { needsReadablePreviewCheck } from '../../service/workspace-file-preview-service.js';
 import {
   errorMessage,
   filePreviewErrorMessage,
@@ -63,7 +66,7 @@ const emit = defineEmits<{
   notice: [value: string, type: MessageType, cause?: unknown];
   openHtmlPreview: [path: string];
 }>();
-const workspaceFileTabsRef = ref<WorkspaceFilePagePort>();
+const workspaceFileTabsRef = ref<InstanceType<typeof WorkspaceFileTabs>>();
 const fileWorkbench = props.controller;
 watch(workspaceFileTabsRef, (page, previous) => props.registerPage(page, previous), {
   flush: 'sync'
@@ -80,7 +83,23 @@ const activePreviewId = fileWorkbench.activeTabId;
 const activePreview = computed(() =>
   filePageFrames.value.find((preview) => preview.id === activePreviewId.value)
 );
-const workspaceFileTabs = fileWorkbench.tabList;
+const pendingComparison = fileWorkbench.pendingComparison;
+const comparisonFailure = ref<InstanceType<typeof FilePreviewState>>();
+watch(pendingComparison, (pending, previous) => {
+  // Only hand off focus when the successful retry removes its focused control.
+  if (
+    !pending &&
+    previous?.retrying &&
+    fileWorkbench.activeTab.value &&
+    comparisonFailure.value?.hasRetryFocus()
+  )
+    workspaceFileTabsRef.value?.focusClose();
+});
+const workspaceFileTabs = computed(() => {
+  const tabs = fileWorkbench.tabList.value;
+  const pending = pendingComparison.value;
+  return pending === undefined ? tabs : [...tabs, pending.tab];
+});
 const predictionAttention = new PromptPredictionAttentionService();
 watch(
   () => props.predictionEnabled,
@@ -411,10 +430,15 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
       ref="workspaceFileTabsRef"
       :tabs="workspaceFileTabs"
       :presentation="standaloneFileMode ? 'window' : 'overlay'"
-      :active-tab-id="activeWorkspaceFileTabId"
+      :active-tab-id="pendingComparison?.tab.id ?? activeWorkspaceFileTabId"
+      :initial-focus-close="
+        pendingComparison !== undefined ||
+        needsReadablePreviewCheck(fileWorkbench.activeTab.value?.path ?? '')
+      "
       :can-go-back="canGoFileBack"
       :can-go-forward="canGoFileForward"
       :can-close-unmounted-tab="canCloseUnmountedTab"
+      :prepare-confirmed-close="fileWorkbench.prepareConfirmedTabClose"
       @back="travelFileNavigation(-1)"
       @forward="travelFileNavigation(1)"
       @activate="activateWorkspaceFileTab"
@@ -424,6 +448,17 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
       @close-last="closeStandaloneFileWindow"
       v-slot="{ tab, active, registerPageHandle, requestClose, requestCloseAll }"
     >
+      <template v-if="pendingComparison?.tab.id === tab.id">
+        <FilePreviewState
+          v-if="pendingComparison.error"
+          ref="comparisonFailure"
+          :message="filePreviewErrorSummary(pendingComparison.error.cause, tab.path)"
+          :retrying="pendingComparison.retrying === true"
+          retryable
+          @retry="pendingComparison?.error?.retry()"
+        />
+        <FilePreviewLoading v-else class="workspace-comparison-loading" />
+      </template>
       <template v-for="preview in filePageFrames" :key="preview.id">
         <WorkspaceTextFilePage
           :quote-target="props.quoteTargetFor?.(tab)"
@@ -534,6 +569,7 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
         v-show="active"
         :active="active"
         :code-navigation-enabled="codeNavigationEnabled && tab.gitFile !== true"
+        :focus-on-mount="false"
         :load="loadDiff"
         @viewed="active && recordPredictionAttention(tab)"
         :tab="tab"
@@ -549,3 +585,9 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
     </WorkspaceFileTabs>
   </Teleport>
 </template>
+
+<style scoped>
+.workspace-comparison-loading {
+  flex: 1;
+}
+</style>

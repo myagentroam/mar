@@ -16,6 +16,7 @@ const props = withDefaults(
     alignCenter?: boolean;
     fullscreen?: boolean;
     showClose?: boolean;
+    focusCloseOnOpen?: boolean;
     closeOnClickModal?: boolean;
     closeOnPressEscape?: boolean;
     destroyOnClose?: boolean;
@@ -39,6 +40,7 @@ defineSlots<{
 
 const dialog = useTemplateRef<HTMLDialogElement>('dialog');
 const panel = useTemplateRef<HTMLElement>('panel');
+const closeButton = useTemplateRef<InstanceType<typeof MarButton>>('closeButton');
 const titleId = useId();
 const locale = useMarUiLocale();
 const panelWidth = computed(() =>
@@ -234,7 +236,11 @@ onBeforeUnmount(() => {
   restoreFocus(owner);
 });
 
-defineExpose({ handleClose, panel });
+defineExpose({
+  handleClose,
+  panel,
+  focusClose: () => closeButton.value?.focus({ preventScroll: true })
+});
 </script>
 
 <template>
@@ -276,9 +282,11 @@ defineExpose({ handleClose, panel });
           </slot>
           <MarButton
             v-if="showClose"
+            ref="closeButton"
             class="mar-ui-dialog__close mar-icon-action"
             text
             icon="close"
+            :autofocus="focusCloseOnOpen || undefined"
             :aria-label="locale.closeDialog"
             @click="handleClose"
           />

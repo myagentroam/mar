@@ -84,8 +84,7 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
       const transport = direct.acquireTerminalTransport(nodeId, nodeGeneration);
       if (transport === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
       try {
-        const path = await transport.readyStreamPath(signal);
-        signal.throwIfAborted();
+        const path = transport.streamPath;
         if (path === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
         return {
           get closed() {

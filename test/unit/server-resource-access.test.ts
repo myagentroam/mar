@@ -179,7 +179,10 @@ describe('Server Node/Workspace ownership and grants', () => {
         target_user_id: type === 'TEMPLATE' ? null : 8,
         target_organization_id: type === 'TEMPLATE' ? 4 : null
       };
-      await grants.removeGrant(1, 'grant-1');
+      await expect(grants.removeGrant(1, 'grant-1')).resolves.toEqual({
+        resourceType: type,
+        resourceId
+      });
       expect(fixture.audit).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'resource.grant.revoked',

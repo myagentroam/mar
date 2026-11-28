@@ -35,10 +35,9 @@ export function createAuthFixture() {
     })
   };
   const lifecycle = {
-    closeSessionConnections: vi.fn<AuthenticationSessionLifecycle['closeSessionConnections']>(
+    invalidateSessionAccess: vi.fn<AuthenticationSessionLifecycle['invalidateSessionAccess']>(
       async () => undefined
-    ),
-    closeAllConnections: vi.fn(async () => undefined)
+    )
   };
   const localePreferences = {
     locale: vi.fn<UserLocalePreferences['locale']>(async () => locale),
@@ -116,10 +115,16 @@ export function createAuthFixture() {
       sessions.delete(token);
     }),
     changePassword: vi.fn<AuthenticationStore['changePassword']>(
-      async (_userId: number, password: string) => {
+      async (userId: number, password: string) => {
         passwordHash = hashPassword(password);
         mustChangePassword = false;
-        sessions.clear();
+        const hashes: string[] = [];
+        for (const [token, item] of sessions) {
+          if (item.current.userId !== userId) continue;
+          hashes.push(item.current.sessionHash);
+          sessions.delete(token);
+        }
+        return hashes;
       }
     )
   } satisfies AuthenticationStore;

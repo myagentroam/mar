@@ -46,6 +46,7 @@ const props = withDefaults(
     readonly source?: 'WORKING_TREE' | 'HISTORY' | 'TOOL_CHANGE';
     readonly previewEnabled: boolean;
     readonly active?: boolean;
+    readonly focusOnMount?: boolean;
     readonly embedded?: boolean;
     readonly codeNavigationEnabled?: boolean;
   }>(),
@@ -687,7 +688,7 @@ onMounted(() => {
       return 'HANDLED';
     }
   });
-  if (props.active !== false) focus();
+  if (props.active !== false && props.focusOnMount !== false) focus();
   updateWorkingTreeMetrics();
   if (workingTreePane.value !== undefined) {
     workingTreeResizeObserver = new ResizeObserver(updateWorkingTreeMetrics);

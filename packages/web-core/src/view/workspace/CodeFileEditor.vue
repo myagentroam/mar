@@ -237,7 +237,7 @@ function scheduleSymbolPublish(): void {
   }, 120);
 }
 
-function scrollToLine(line: number, column?: number): void {
+function scrollToLine(line: number, column?: number, moveFocus = true): void {
   if (view === undefined || line < 1 || line > view.state.doc.lines) return;
   const target = view.state.doc.line(line);
   const position =
@@ -256,7 +256,7 @@ function scrollToLine(line: number, column?: number): void {
     if (view !== undefined) view.dispatch({ effects: navigationDestination.reconfigure([]) });
     navigationDestinationTimer = undefined;
   }, 1_800);
-  view.focus();
+  if (moveFocus) view.focus();
 }
 
 function goTo(position: number): void {
@@ -584,7 +584,9 @@ onMounted(() => {
   configureLanguage(view, props.path, props.modelValue.length);
   view.requestMeasure({ read: publishViewed });
   window.addEventListener('keyup', clearNavigationTargetOnModifierRelease, { capture: true });
-  if (props.targetLine !== undefined) scrollToLine(props.targetLine, props.targetColumn);
+  // A location can be applied as asynchronously loaded content mounts. That is
+  // not a new keyboard action and must not take focus from the preview controls.
+  if (props.targetLine !== undefined) scrollToLine(props.targetLine, props.targetColumn, false);
 });
 
 watch(
@@ -616,7 +618,7 @@ watch(
 watch(
   () => [props.targetLine, props.targetColumn] as const,
   ([line, column]) => {
-    if (line !== undefined) scrollToLine(line, column);
+    if (line !== undefined) scrollToLine(line, column, false);
   }
 );
 onBeforeUnmount(() => {

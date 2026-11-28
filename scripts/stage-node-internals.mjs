@@ -46,7 +46,7 @@ async function rewrite(directory) {
     if (!entry.name.endsWith('.js')) continue;
     const source = await readFile(path, 'utf8');
     const output = source.replace(
-      /@myagentroam\/(browser-vnc|code-navigation(?:\/symbol-navigation)?|marctl\/(?:bin\/(?:marctl|marnodes|marssh|marscp)\.mjs|src\/(?:terminal-relay-sender\.mjs|scp-worker-close\.mjs|scp-worker\.cjs)))(?=['"])/gu,
+      /@myagentroam\/(browser-vnc|code-navigation(?:\/symbol-navigation)?|marctl\/(?:bin\/(?:marctl|marnodes|marssh|marscp)\.mjs|src\/(?:terminal-relay-sender\.mjs|tcp-forward-socket\.mjs|scp-worker-close\.mjs|scp-worker\.cjs)))(?=['"])/gu,
       (_, target) => {
         const destination = target.startsWith('code-navigation')
           ? resolve(

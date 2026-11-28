@@ -43,13 +43,13 @@ export interface AuthenticationStore extends SessionLookup {
   revokeUserSessionByPublicId(userId: number, publicId: string): Awaitable<string | undefined>;
   revokeSession(sessionId: string): Awaitable<void>;
   rotateCsrfToken(sessionId: string): Awaitable<string | undefined>;
-  /** Commit password and session revocation; audit is a non-blocking observer. */
+  /** Commit password and session revocation; return only the affected login session hashes. */
   changePassword(
     userId: number,
     password: string,
     eventType: 'password_changed',
     ipAddress: string
-  ): Awaitable<void>;
+  ): Awaitable<readonly string[]>;
 }
 
 export interface AuthenticationAuditEvent {
@@ -70,8 +70,7 @@ export interface AuthenticationAuditSink {
 }
 
 export interface AuthenticationSessionLifecycle {
-  closeSessionConnections(sessionHash: string): Awaitable<void>;
-  closeAllConnections(): Awaitable<void>;
+  invalidateSessionAccess(sessionHash: string): Awaitable<void>;
 }
 
 export interface UserLocalePreferences {

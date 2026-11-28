@@ -285,7 +285,11 @@ export class MysqlServerDatabase {
     return result.insertId;
   }
 
-  async resetUserPassword(userId: number, password: string, actorUserId?: number): Promise<void> {
+  async resetUserPassword(
+    userId: number,
+    password: string,
+    actorUserId?: number
+  ): Promise<readonly string[]> {
     assertPasswordPolicy(password);
     const connection = await this.raw.getConnection();
     try {
@@ -296,19 +300,17 @@ export class MysqlServerDatabase {
         [hashPassword(password), this.now(), userId]
       );
       if (result.affectedRows !== 1) throw new Error('USER_NOT_FOUND_OR_PROTECTED');
-      await connection.execute(
-        'UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL',
-        [this.now(), userId]
-      );
+      const hashes = await this.authentication.revokeUserLoginSessions(connection, userId);
       await connection.commit();
       commitMysqlAudits(connection);
+      this.authentication.invalidateLoginSessions(hashes);
       void this.audit({
         eventType: 'user_password_reset',
         ...(actorUserId === undefined ? {} : { actorUserId }),
         targetType: 'USER',
         targetId: String(userId)
       });
-      this.authentication.invalidateUserSessions(userId);
+      return hashes;
     } catch (error) {
       discardMysqlAudits(connection);
       await connection.rollback();
@@ -533,7 +535,7 @@ export class MysqlServerDatabase {
     password: string,
     eventType: 'password_changed' = 'password_changed',
     ipAddress?: string
-  ): Promise<void> {
+  ): Promise<readonly string[]> {
     return this.authentication.changePassword(userId, password, eventType, ipAddress);
   }
 

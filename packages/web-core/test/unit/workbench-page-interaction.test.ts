@@ -161,6 +161,20 @@ describe('Workbench page file interaction', () => {
       'main'
     );
   });
+  it.each([
+    '.mar/temp-files/run/report.html',
+    'mar-attachment://00000000-0000-4000-8000-000000000000/report.html'
+  ])('sends private HTML through the validated file preview (%s)', (path) => {
+    const state = fixture();
+    state.service.openAgentWorkspaceFile(path);
+    expect(state.openHtml).not.toHaveBeenCalled();
+    expect(state.openWorkspaceFileComparison).toHaveBeenCalledWith(
+      path,
+      undefined,
+      undefined,
+      'main'
+    );
+  });
   beforeEach(() => {
     vi.stubGlobal('Element', class {});
     vi.stubGlobal('HTMLElement', class {});

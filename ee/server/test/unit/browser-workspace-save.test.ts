@@ -165,8 +165,23 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
       )
     ).resolves.toBeUndefined();
     allowed = false;
-    await service.revalidateFileAuthorizations();
+    await service.revalidateAuthorizations({ ...scope, workspaceId: 'other-workspace' });
+    expect(opened).toMatchObject({ revoked: { aborted: false } });
+    await service.revalidateAuthorizations(scope);
     expect(opened).toMatchObject({ revoked: { aborted: true } });
+    expect(request).toHaveBeenCalledWith(
+      scope.nodeId,
+      'attachment',
+      'generation',
+      {
+        action: 'revoke',
+        attachmentId: payload.attachmentId,
+        workspaceId: scope.workspaceId,
+        browserId,
+        code: 'BROWSER_NOT_AUTHORIZED'
+      },
+      owner
+    );
     controller.abort();
   } finally {
     service.close();

@@ -1,5 +1,5 @@
 import type { ResourceOwnership } from '@myagentroam/protocol';
-import type { UserNodeAuthorization } from './node-access-contracts.js';
+import type { NodeResourceScope, UserNodeAuthorization } from './node-access-contracts.js';
 
 export interface WorkspaceUpdate {
   readonly ownership?: ResourceOwnership;
@@ -16,7 +16,7 @@ export interface WorkspaceNodeControl {
     timeoutMs?: number
   ): Promise<unknown>;
   ownsWorkbenchConnection(sessionHash: string, connectionId: string): boolean;
-  revalidateDataAuthorizations(): Promise<void>;
+  revalidateDataAuthorizations(scope: NodeResourceScope): Promise<void>;
 }
 
 /** Resource persistence and product-specific ownership decisions remain with the host. */

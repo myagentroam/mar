@@ -16,10 +16,7 @@ export function registerAuthRoutes(input: {
   readonly store: AuthenticationStore;
   readonly audit: AuthenticationAuditSink;
   readonly nodeControl: {
-    closeUserTerminals(sessionHash: string): void;
-    closeUserWorkbench(sessionHash: string): void;
-    closeAllTerminals(): void;
-    closeAllWorkbench(): void;
+    invalidateLoginSession(sessionHash: string): void;
   };
   readonly publicOrigin: string | undefined;
   readonly secureCookies: boolean;
@@ -36,13 +33,8 @@ export function registerAuthRoutes(input: {
     store: input.store,
     audit: input.audit,
     lifecycle: {
-      closeSessionConnections(sessionHash) {
-        nodeControl.closeUserTerminals(sessionHash);
-        nodeControl.closeUserWorkbench(sessionHash);
-      },
-      closeAllConnections() {
-        nodeControl.closeAllTerminals();
-        nodeControl.closeAllWorkbench();
+      invalidateSessionAccess(sessionHash) {
+        nodeControl.invalidateLoginSession(sessionHash);
       }
     },
     publicOrigin: input.publicOrigin,

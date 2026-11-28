@@ -8,7 +8,7 @@ type TicketIdentity = { readonly nodeId: string; readonly user: UserNodeAuthoriz
 /** Owns single-use Relay tickets and active revocation, not resource authorization or bytes. */
 export class FileStreamTickets<Ticket extends TicketIdentity> {
   private readonly pending = new Map<string, { ticket: Ticket; timer: NodeJS.Timeout }>();
-  private readonly active = new Map<Ticket, AbortController>();
+  private readonly active = new Map<Ticket, { scope: AbortController; prepared: boolean }>();
   private closed = false;
 
   constructor(
@@ -16,6 +16,7 @@ export class FileStreamTickets<Ticket extends TicketIdentity> {
       kind(ticket: Ticket): string;
       allowed(ticket: Ticket): boolean | Promise<boolean>;
       prepare(ticket: Ticket, signal: AbortSignal): Promise<unknown>;
+      finishAfterResourceRevocation?(ticket: Ticket): boolean;
       onEnd?(ticket: Ticket): NodeStreamAdmission['onEnd'];
     }
   ) {}
@@ -52,7 +53,8 @@ export class FileStreamTickets<Ticket extends TicketIdentity> {
     this.pending.delete(id);
     clearTimeout(timer);
     const scope = new AbortController();
-    this.active.set(ticket, scope);
+    const entryState = { scope, prepared: false };
+    this.active.set(ticket, entryState);
     const finish = () => {
       this.active.delete(ticket);
       signal.removeEventListener('abort', finish);
@@ -69,6 +71,7 @@ export class FileStreamTickets<Ticket extends TicketIdentity> {
         typeof result.grant === 'string' &&
         /^[a-f0-9-]{36}$/u.test(result.grant)
       ) {
+        entryState.prepared = true;
         const onEnd = this.options.onEnd?.(ticket);
         return { grant: result.grant, revoked: scope.signal, ...(onEnd && { onEnd }) };
       }
@@ -86,9 +89,12 @@ export class FileStreamTickets<Ticket extends TicketIdentity> {
     return { code: 'NODE_STREAM_UNAVAILABLE' };
   }
 
-  async revalidate(): Promise<void> {
+  async revalidate(matches: (ticket: Ticket) => boolean): Promise<void> {
     await Promise.all(
-      [...this.active].map(async ([ticket, scope]) => {
+      [...this.active].map(async ([ticket, { scope, prepared }]) => {
+        // An OPEN still awaiting Node authorization must not escape a concurrent revocation.
+        if (!matches(ticket) || (prepared && this.options.finishAfterResourceRevocation?.(ticket)))
+          return;
         if (
           !(await Promise.resolve()
             .then(() => this.options.allowed(ticket))
@@ -103,7 +109,7 @@ export class FileStreamTickets<Ticket extends TicketIdentity> {
     this.closed = true;
     for (const { timer } of this.pending.values()) clearTimeout(timer);
     this.pending.clear();
-    for (const scope of this.active.values()) scope.abort();
+    for (const { scope } of this.active.values()) scope.abort();
     this.active.clear();
   }
 }

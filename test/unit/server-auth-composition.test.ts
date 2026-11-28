@@ -15,6 +15,7 @@ function transactionalDatabase() {
     beginTransaction: vi.fn(async () => undefined),
     execute: vi.fn(async (sql: string) => {
       expect(sql).toEqual(expect.any(String));
+      if (sql.startsWith('SELECT session_hash')) return [[], []];
       return [{ affectedRows: 1 }, []];
     }),
     commit: vi.fn(async () => undefined),
@@ -49,6 +50,7 @@ describe('authentication persistence composition', () => {
       connection.commit.mockClear();
       connection.execute.mockImplementation(async (sql: string) => {
         if (sql.startsWith('SELECT id FROM users')) return [[{ id: 7 }], []] as never;
+        if (sql.startsWith('SELECT session_hash')) return [[session], []] as never;
         if (sql.startsWith('SELECT username')) return [[session], []] as never;
         if (sql.startsWith('SELECT id FROM nodes')) return [[], []] as never;
         return [{ affectedRows: 1 }, []];
@@ -62,15 +64,13 @@ describe('authentication persistence composition', () => {
     }
   );
 
-  it('connects shared session lifecycle events to both terminal and Workbench closures', async () => {
+  it('invalidates only revoked login scopes in terminal and Workbench', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'core-auth-adapter-'));
     const database = openServerDatabase(join(directory, 'server.sqlite'), { now: () => 1_000 });
     const app = Fastify();
     const nodeControl = {
-      closeUserTerminals: vi.fn(),
-      closeUserWorkbench: vi.fn(),
-      closeAllTerminals: vi.fn(),
-      closeAllWorkbench: vi.fn()
+      invalidateLoginSession: vi.fn(),
+      closeUserSessions: vi.fn()
     };
     try {
       registerAuthRoutes({
@@ -102,14 +102,23 @@ describe('authentication persistence composition', () => {
       });
       expect(me.json().userId).toBe(userId);
       // Equal timestamps use the existing database tie-break; assert the actual evicted hash.
-      for (let index = 0; index < 5; index++) expect((await login()).statusCode).toBe(200);
-      expect(nodeControl.closeUserTerminals).toHaveBeenCalledOnce();
-      expect(nodeControl.closeUserWorkbench.mock.calls).toEqual(
-        nodeControl.closeUserTerminals.mock.calls
-      );
-      expect(nodeControl.closeUserTerminals.mock.calls[0]![0]).not.toBe(firstToken);
-      expect(nodeControl.closeUserTerminals.mock.calls[0]![0]).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+      const issued = [hashOpaque(firstToken)];
+      for (let index = 0; index < 5; index++) {
+        const session = await login();
+        expect(session.statusCode).toBe(200);
+        issued.push(
+          hashOpaque(String(session.headers['set-cookie']).split(';')[0]!.split('=')[1]!)
+        );
+      }
+      expect(nodeControl.invalidateLoginSession).toHaveBeenCalledOnce();
+      expect(nodeControl.invalidateLoginSession.mock.calls[0]![0]).not.toBe(firstToken);
+      expect(nodeControl.invalidateLoginSession.mock.calls[0]![0]).toMatch(/^[A-Za-z0-9_-]{43}$/u);
       const latest = await login();
+      issued.push(hashOpaque(String(latest.headers['set-cookie']).split(';')[0]!.split('=')[1]!));
+      const evicted = new Set(nodeControl.invalidateLoginSession.mock.calls.flat());
+      const active = issued.filter((hash) => !evicted.has(hash));
+      expect(active).toHaveLength(5);
+      nodeControl.invalidateLoginSession.mockClear();
       const changed = await app.inject({
         method: 'POST',
         url: '/api/auth/change-password',
@@ -121,8 +130,8 @@ describe('authentication persistence composition', () => {
       });
       expect(changed.statusCode).toBe(200);
       expect(changed.json().userId).toBe(userId);
-      expect(nodeControl.closeAllTerminals).toHaveBeenCalledOnce();
-      expect(nodeControl.closeAllWorkbench).toHaveBeenCalledOnce();
+      expect(nodeControl.closeUserSessions).not.toHaveBeenCalled();
+      expect(nodeControl.invalidateLoginSession.mock.calls.flat().sort()).toEqual(active.sort());
       const cookie = String(changed.headers['set-cookie']).split(';')[0]!;
       const logout = await app.inject({
         method: 'POST',
@@ -150,10 +159,7 @@ describe('authentication persistence composition', () => {
         headers: { cookie: String(member.headers['set-cookie']).split(';')[0]! }
       });
       expect(memberMe.json().userId).toBe(memberId);
-      expect(nodeControl.closeUserTerminals).toHaveBeenLastCalledWith(
-        hashOpaque(cookie.split('=')[1]!)
-      );
-      expect(nodeControl.closeUserWorkbench).toHaveBeenLastCalledWith(
+      expect(nodeControl.invalidateLoginSession).toHaveBeenLastCalledWith(
         hashOpaque(cookie.split('=')[1]!)
       );
     } finally {
@@ -181,12 +187,54 @@ describe('authentication persistence composition', () => {
     expect(connection.release).toHaveBeenCalledOnce();
   });
 
+  it('does not dispatch a password-reset audit if the SQLite transaction rolls back', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'auth-reset-rollback-'));
+    const database = openServerDatabase(join(directory, 'server.sqlite'));
+    try {
+      const userId = database.createUser({
+        username: 'reset-target',
+        email: null,
+        nickname: null,
+        password: 'old-test-password'
+      });
+      const session = database.createUserSession(userId, {
+        ipAddress: '127.0.0.1',
+        userAgent: 'reset-rollback-test'
+      });
+      const audit = vi.spyOn(database, 'audit');
+      const exec = database.raw.exec.bind(database.raw);
+      const failure = vi.spyOn(database.raw, 'exec').mockImplementation((sql) => {
+        if (sql === 'COMMIT') throw new Error('TEST_COMMIT_FAILED');
+        exec(sql);
+      });
+      try {
+        expect(() => database.resetUserPassword(userId, 'new-test-password', 1)).toThrow(
+          'TEST_COMMIT_FAILED'
+        );
+      } finally {
+        failure.mockRestore();
+      }
+      expect(audit).not.toHaveBeenCalled();
+      expect(database.findCurrentUserSession(session.sessionId)?.userId).toBe(userId);
+      expect(database.verifyUserPassword(userId, 'old-test-password')).toBe(true);
+
+      expect(database.resetUserPassword(userId, 'new-test-password', 1)).toEqual([
+        hashOpaque(session.sessionId)
+      ]);
+      expect(database.findCurrentUserSession(session.sessionId)).toBeUndefined();
+      expect(audit).toHaveBeenCalledOnce();
+    } finally {
+      database.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('does not roll back password changes when asynchronous audit writing fails', async () => {
     const { database, connection } = transactionalDatabase();
     vi.spyOn(database, 'audit').mockRejectedValue(new Error('AUDIT_WRITE_FAILED'));
     await expect(
       database.changePassword(7, 'new-test-password', 'password_changed', '127.0.0.1')
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual([]);
     expect(connection.commit).toHaveBeenCalledOnce();
     expect(connection.rollback).not.toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalledOnce();

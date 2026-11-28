@@ -142,7 +142,8 @@ export function registerNodeRoutes(input: {
       await resources.assertCanManageNode(admin.userId, request.params.nodeId);
       if (ownership !== undefined)
         await mutations.changeNodeOwnership(admin.userId, request.params.nodeId, ownership);
-      if (ownership !== undefined) await nodeControl.revalidateDataAuthorizations();
+      if (ownership !== undefined)
+        await nodeControl.revalidateDataAuthorizations({ nodeId: request.params.nodeId });
       if (value === undefined) {
         const node = (await nodeControl.listNodes()).find(
           (candidate) => candidate.id === request.params.nodeId

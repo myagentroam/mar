@@ -40,9 +40,15 @@ import type {
 import type { NodeRequestBroker } from './service/node-request-broker.js';
 import { WorkspaceFileStreamTickets } from './service/workspace-file-stream-tickets.js';
 import { FileStreamTickets } from './service/file-stream-tickets.js';
+import { TcpForwardRelay } from './service/tcp-forward-relay.js';
+import { tcpForwardControlKind, tcpForwardDataKind } from '@myagentroam/protocol/tcp-forward';
 import type { HostedFileStreamTicket } from '@myagentroam/server-core/hosted-conversation-routes';
 import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
-import type { UserNodeAuthorization } from '@myagentroam/server-core/node-access-contracts';
+import type {
+  NodeResourceScope,
+  UserNodeAuthorization
+} from '@myagentroam/server-core/node-access-contracts';
+import type { NodeStreamAuthorizer } from '@myagentroam/server-core/node-relay-channel';
 import type { TerminalRelayService } from '@myagentroam/server-core/terminal-relay-service';
 import type {
   NodeMessageProjector,
@@ -163,6 +169,7 @@ export class NodeControl extends NodeIdentityControl {
   private readonly terminalRelay: TerminalRelayService;
   private readonly fileRelay: NodeFileRelay;
   private readonly dataRelay: NodeRelayChannel;
+  private readonly tcpForwardRelay = new TcpForwardRelay();
   private readonly fileStreamTickets: WorkspaceFileStreamTickets;
   private readonly hostedFileTickets: FileStreamTickets<HostedFileStreamTicket>;
   private readonly dataClients = new Map<WebSocket, UserNodeAuthorization>();
@@ -337,6 +344,9 @@ export class NodeControl extends NodeIdentityControl {
       this.dataRelay.disconnectNode(nodeId);
       this.fileRelay.disconnectNode(nodeId);
       this.requestBroker.rejectNode(nodeId, new Error('NODE_CONNECTION_REPLACED'));
+      this.directTransfers.revokeNode(nodeId, 'NODE_CONNECTION_REPLACED');
+      this.terminalDirect.revokeNode(nodeId, 'NODE_CONNECTION_REPLACED');
+      this.terminalRelay.disconnectNode(nodeId);
       this.desktopDirect.revokeNode(nodeId, 'NODE_CONNECTION_REPLACED');
       this.desktopRelay.revokeNode(nodeId);
       this.browser?.revokeNode(nodeId);
@@ -475,7 +485,8 @@ export class NodeControl extends NodeIdentityControl {
     nodeId: string,
     user: UserNodeAuthorization,
     cliExpiresAt?: number,
-    hostedOnly = false
+    hostedOnly = false,
+    allowTcpForward?: () => Promise<boolean>
   ): void {
     if (socket.readyState !== socket.OPEN) return;
     if (cliExpiresAt !== undefined && cliExpiresAt <= Date.now()) {
@@ -492,7 +503,13 @@ export class NodeControl extends NodeIdentityControl {
       clearTimeout(expiry);
       this.dataClients.delete(socket);
     });
-    this.dataRelay.attachClient(socket, nodeId, async ({ kind, grant }, signal) => {
+    const forward =
+      cliExpiresAt !== undefined && !hostedOnly && allowTcpForward !== undefined
+        ? this.tcpForwardRelay.forCarrier(nodeId, allowTcpForward)
+        : undefined;
+    const authorize: NodeStreamAuthorizer = async ({ kind, grant }, signal) => {
+      if (kind === tcpForwardControlKind || kind === tcpForwardDataKind)
+        return forward?.({ kind, grant }, signal);
       if (
         (kind === 'hosted-file-upload' || kind === 'hosted-file-download') &&
         cliExpiresAt === undefined
@@ -517,6 +534,12 @@ export class NodeControl extends NodeIdentityControl {
       if (cliExpiresAt === undefined && (kind === 'file-upload' || kind === 'file-download'))
         return this.fileStreamTickets.authorize(kind, grant, nodeId, user, signal);
       return undefined;
+    };
+    this.dataRelay.attachClient(socket, nodeId, async (open, signal) => {
+      if (!this.dataClients.has(socket)) return { code: 'SESSION_UNAUTHENTICATED' };
+      const admission = await authorize(open, signal);
+      // An authenticated carrier owns bytes, not permission to start a new operation.
+      return this.dataClients.has(socket) ? admission : { code: 'SESSION_UNAUTHENTICATED' };
     });
   }
 
@@ -634,19 +657,18 @@ export class NodeControl extends NodeIdentityControl {
     for (const [socket, id] of this.shareDataClients) if (id === shareId) socket.terminate();
   }
 
-  closeUserWorkbench(sessionHash: string): void {
+  invalidateLoginSession(sessionHash: string): void {
+    // Retire the login's admission, not the shared carrier or unrelated credentials.
+    for (const [socket, user] of this.dataClients)
+      if (user.sessionHash === sessionHash) this.dataClients.delete(socket);
+    this.terminalRelay.closeSession(sessionHash);
+    this.terminalDirect.revokeSession(sessionHash);
     this.workbenchRelay.closeSession(sessionHash);
   }
 
-  closeUserTerminals(sessionHash: string): void {
-    for (const [socket, user] of this.dataClients)
-      if (user.sessionHash === sessionHash) socket.terminate();
-    this.terminalRelay.closeSession(sessionHash);
-    this.terminalDirect.revokeSession(sessionHash);
-  }
-
   closeUserSessions(userId: number): void {
-    for (const [socket, user] of this.dataClients) if (user.userId === userId) socket.terminate();
+    for (const [socket, user] of this.dataClients)
+      if (user.userId === userId) this.dataClients.delete(socket);
     this.workbenchRelay.closeUser(userId);
     this.terminalRelay.closeUser(userId);
     this.terminalDirect.revokeUser(userId);
@@ -654,25 +676,24 @@ export class NodeControl extends NodeIdentityControl {
     this.desktopRelay.revokeUser(userId);
   }
 
-  closeAllTerminals(): void {
-    this.terminalRelay.closeAllRelays();
+  revalidateHostedFileAuthorizations(templateId: string): Promise<void> {
+    return this.hostedFileTickets.revalidate((ticket) => ticket.templateId === templateId);
   }
 
-  revalidateHostedFileAuthorizations(): Promise<void> {
-    return this.hostedFileTickets.revalidate();
-  }
-
-  async revalidateDataAuthorizations(): Promise<void> {
+  async revalidateDataAuthorizations(scope: NodeResourceScope): Promise<void> {
     await Promise.all([
-      this.terminalRelay.revalidateAuthorizations(),
-      this.fileStreamTickets.revalidate(),
-      this.browser?.revalidateFileAuthorizations(),
-      this.revalidateHostedFileAuthorizations()
+      this.terminalRelay.revalidateAuthorizations(scope),
+      this.terminalDirect.revalidateAuthorizations(scope),
+      this.directTransfers.revalidateAuthorizations(scope),
+      this.fileStreamTickets.revalidateResource(scope),
+      this.browser?.revalidateAuthorizations(scope),
+      ...(scope.workspaceId === undefined
+        ? [
+            this.tcpForwardRelay.revalidate(scope.nodeId),
+            this.hostedFileTickets.revalidate((ticket) => ticket.nodeId === scope.nodeId)
+          ]
+        : [])
     ]);
-  }
-
-  closeAllWorkbench(): void {
-    this.workbenchRelay.close();
   }
 
   closeTerminal(nodeId: string, terminalId: string): void {
@@ -743,7 +764,7 @@ export class NodeControl extends NodeIdentityControl {
       () => this.hostedFileTickets.close(),
       () => this.fileRelay.close(),
       () => this.dataRelay.close(),
-      () => this.closeAllWorkbench()
+      () => this.workbenchRelay.close()
     ]) {
       try {
         close();

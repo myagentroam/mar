@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/protocol",
-  "version": "0.15.23",
+  "version": "0.15.24",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/myagentroam/mar.git",
@@ -17,6 +17,11 @@
     "access": "public"
   },
   "exports": {
+    "./tcp-forward": {
+      "development": "./src/tcp-forward.ts",
+      "types": "./dist/tcp-forward.d.ts",
+      "import": "./dist/tcp-forward.js"
+    },
     "./browser-stream": {
       "development": "./src/browser-stream.ts",
       "types": "./dist/browser-stream.d.ts",

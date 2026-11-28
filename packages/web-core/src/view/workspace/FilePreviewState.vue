@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { useTemplateRef } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 
 const props = defineProps<{
@@ -9,6 +10,8 @@ const props = defineProps<{
   readonly retrying?: boolean;
 }>();
 const emit = defineEmits<{ retry: [] }>();
+const retryButton = useTemplateRef<InstanceType<typeof MarButton>>('retryButton');
+defineExpose({ hasRetryFocus: () => retryButton.value?.ref === document.activeElement });
 </script>
 
 <template>
@@ -17,6 +20,7 @@ const emit = defineEmits<{ retry: [] }>();
     <slot name="actions"
       ><MarButton
         v-if="retryable"
+        ref="retryButton"
         link
         :aria-disabled="retrying || undefined"
         :aria-busy="retrying || undefined"

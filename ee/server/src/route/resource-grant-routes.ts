@@ -140,9 +140,17 @@ export function registerResourceGrantRoutes(input: {
       const actor = writableActor(database, request, reply, publicOrigin);
       if (actor === undefined) return;
       try {
-        const resourceType = await grants.removeGrant(actor.userId, request.params.grantId);
-        if (resourceType === 'TEMPLATE') await nodeControl.revalidateHostedFileAuthorizations();
-        else if (resourceType !== 'MODEL') await nodeControl.revalidateDataAuthorizations();
+        const { resourceType, resourceId, workspaceId } = await grants.removeGrant(
+          actor.userId,
+          request.params.grantId
+        );
+        if (resourceType === 'TEMPLATE')
+          await nodeControl.revalidateHostedFileAuthorizations(resourceId);
+        else if (resourceType === 'NODE' || resourceType === 'WORKSPACE')
+          await nodeControl.revalidateDataAuthorizations({
+            nodeId: resourceId,
+            ...(workspaceId === undefined ? {} : { workspaceId })
+          });
         return reply.code(204).send();
       } catch (error) {
         return databaseError(reply, error);

@@ -117,7 +117,7 @@ describe('Workbench direct transport coordination', () => {
       const path = { closed: false };
       clients.workspace.ensureTransport.mockReturnValue(probe.promise);
       clients.workspace.acquireTerminalTransport.mockReturnValue({
-        readyStreamPath: async () => path,
+        streamPath: path,
         release: vi.fn(),
         nodeGeneration: 'generation'
       });
@@ -140,6 +140,35 @@ describe('Workbench direct transport coordination', () => {
       }
     }
   );
+
+  it('does not acquire a carrier for a cancelled caller while a shared probe completes', async () => {
+    const f = fixture();
+    const probe = deferred<'DIRECT_AVAILABLE'>();
+    const abort = new AbortController();
+    clients.workspace.ensureTransport.mockReturnValue(probe.promise);
+    clients.workspace.acquireTerminalTransport.mockReturnValue({
+      streamPath: { closed: false },
+      release: vi.fn()
+    });
+    try {
+      f.coordinator.selectNode('one');
+      f.coordinator.connectionReady('connection', false);
+      await f.coordinator.refresh('one');
+      const cancelled = expect(
+        f.coordinator.connectNodePath('one', abort.signal)
+      ).rejects.toMatchObject({ name: 'AbortError' });
+      const sibling = f.coordinator.connectNodePath('one', new AbortController().signal);
+      abort.abort();
+      probe.resolve('DIRECT_AVAILABLE');
+      await cancelled;
+      const path = await sibling;
+      expect(path.closed).toBe(false);
+      expect(clients.workspace.acquireTerminalTransport).toHaveBeenCalledOnce();
+      path.close();
+    } finally {
+      f.coordinator.dispose();
+    }
+  });
 
   it.each(['lost', 'reset', 'dispose'] as const)(
     'rejects capability responses after %s',
@@ -316,7 +345,7 @@ describe('Workbench direct transport coordination', () => {
     const signal = new AbortController().signal;
     clients.workspace.ensureTransport.mockResolvedValue('DIRECT_AVAILABLE');
     clients.workspace.acquireTerminalTransport.mockReturnValue({
-      readyStreamPath: async () => ({ closed: false }),
+      streamPath: { closed: false },
       release: vi.fn()
     });
     f.coordinator.selectNode('one');

@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'mysql2/promise';
+import Fastify from '../../ee/server/node_modules/fastify/fastify.js';
 import { openMysqlDatabase } from '../../ee/server/src/mysql/connection.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
+import type { NodeControl } from '../../ee/server/src/node-control.js';
+import { registerManagementRoutes } from '../../ee/server/src/route/management-routes.js';
+import { ServerTrafficMetrics } from '../../ee/server/src/service/server-traffic-metrics.js';
 import { createTestMysqlEnvironmentSecretService } from '../support/mysql-environment-secret-service.js';
 import {
   createPlaywrightTestDatabase,
@@ -10,6 +14,7 @@ import {
   resolvePlaywrightTestDatabase
 } from '../e2e/support/playwright-test-database.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { hashOpaque } from '../../packages/server-core/src/session-token.js';
 
 describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
   'Server MySQL database integration',
@@ -57,6 +62,28 @@ describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
       expect(await database.findCurrentUserSession(session.sessionId)).toBeUndefined();
     });
 
+    it('returns exactly the login scopes revoked by a password change', async () => {
+      const { id } = await database.getAdmin();
+      const create = () =>
+        database.createUserSession(id, { ipAddress: '127.0.0.1', userAgent: 'mysql-change-test' });
+      const first = await create();
+      const second = await create();
+      const alreadyRevoked = await create();
+      await database.revokeSession(alreadyRevoked.sessionId);
+      try {
+        const revoked = await database.changePassword(id, 'temporary-admin-password-2');
+        expect([...revoked].sort()).toEqual(
+          [first, second].map(({ sessionId }) => hashOpaque(sessionId)).sort()
+        );
+        expect(database.findCurrentUserSession(first.sessionId)).toBeUndefined();
+        expect(database.findCurrentUserSession(second.sessionId)).toBeUndefined();
+        const fresh = await create();
+        expect(database.findCurrentUserSession(fresh.sessionId)?.userId).toBe(id);
+      } finally {
+        await database.resetPassword(INITIAL_ADMIN_PASSWORD, 'local-command');
+      }
+    });
+
     it('resets the fixed admin password and revokes its sessions', async () => {
       const admin = await database.getAdmin();
       const session = await database.createUserSession(admin.id, {
@@ -70,6 +97,62 @@ describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
           mustChangePassword: true
         });
       } finally {
+        await database.resetPassword(INITIAL_ADMIN_PASSWORD, 'local-command');
+      }
+    });
+
+    it('invalidates only the target login scopes when an administrator resets a password', async () => {
+      const admin = await database.getAdmin();
+      const userId = await database.createUser({
+        username: `reset-${randomUUID()}`,
+        email: null,
+        nickname: null,
+        password: 'temporary-password-1'
+      });
+      createdUsers.push(userId);
+      const metadata = { ipAddress: '127.0.0.1', userAgent: 'mysql-reset-test' };
+      const first = await database.createUserSession(userId, metadata);
+      const second = await database.createUserSession(userId, metadata);
+      const retired = await database.createUserSession(userId, metadata);
+      await database.revokeSession(retired.sessionId);
+      const invalidateLoginSession = vi.fn();
+      const closeUserSessions = vi.fn();
+      const app = Fastify();
+      const traffic = new ServerTrafficMetrics();
+      try {
+        await database.changePassword(admin.id, 'temporary-admin-password-2');
+        const session = await database.createUserSession(admin.id, metadata);
+        registerManagementRoutes({
+          app,
+          database,
+          nodeControl: { invalidateLoginSession, closeUserSessions } as unknown as NodeControl,
+          nodeUpgrades: { availability: vi.fn() },
+          resources: { assertCanHostConversationTemplate: vi.fn() },
+          directory: { listManagedResourcePage: vi.fn() },
+          users: { list: vi.fn(), deletionSummary: vi.fn() },
+          traffic,
+          publicOrigin: undefined
+        });
+        const response = await app.inject({
+          method: 'POST',
+          url: `/api/management/users/${userId}/reset-password`,
+          headers: {
+            cookie: `mar_user_session=${session.sessionId}`,
+            'x-csrf-token': session.csrfToken
+          }
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ temporaryPassword: expect.any(String) });
+        expect(invalidateLoginSession.mock.calls.flat().sort()).toEqual(
+          [first, second].map(({ sessionId }) => hashOpaque(sessionId)).sort()
+        );
+        expect(closeUserSessions).not.toHaveBeenCalled();
+        expect(database.findCurrentUserSession(first.sessionId)).toBeUndefined();
+        expect(database.findCurrentUserSession(second.sessionId)).toBeUndefined();
+        expect(database.findCurrentUserSession(session.sessionId)?.userId).toBe(admin.id);
+      } finally {
+        traffic.close();
+        await app.close();
         await database.resetPassword(INITIAL_ADMIN_PASSWORD, 'local-command');
       }
     });

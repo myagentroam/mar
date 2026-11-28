@@ -40,9 +40,13 @@ test('Workspace upload and Range downloads reuse one ICE channel and preserve ex
     () => directory
   );
   const workspace = { id: 'fixture-workspace', path: directory } as NodeWorkspace;
+  let canRead = true;
   const coordinator = new DirectTransferCoordinator({
+    ownsPage: ({ sessionHash, workbenchConnectionId }) =>
+      sessionHash === identity.sessionHash &&
+      workbenchConnectionId === identity.workbenchConnectionId,
     authorize: (_userId, id, workspace) =>
-      id === nodeId && (workspace === undefined || workspace === 'fixture-workspace'),
+      canRead && id === nodeId && (workspace === undefined || workspace === 'fixture-workspace'),
     sendNode: (_id, _type, message) => endpoint?.handle(message) ?? false,
     sendBrowser: async (_id, message) => {
       await page.evaluate((value) => {
@@ -102,6 +106,10 @@ test('Workspace upload and Range downloads reuse one ICE channel and preserve ex
     await page.exposeFunction('sendDirect', (message: DirectBrowserMessage) =>
       coordinator.handleBrowserMessage(identity, message)
     );
+    await page.exposeFunction('revokeWorkspace', async () => {
+      canRead = false;
+      await coordinator.revalidateAuthorizations({ nodeId, workspaceId: workspace.id });
+    });
     await page.goto(url);
     const ranges = [
       { offset: 7, length: 320 * 1024 + 3 },
@@ -112,6 +120,7 @@ test('Workspace upload and Range downloads reuse one ICE channel and preserve ex
         const host = window as unknown as Window & {
           sendDirect(message: DirectBrowserMessage): Promise<void>;
           receiveDirect(message: DirectServerMessage): void;
+          revokeWorkspace(): Promise<void>;
         };
         const { createWorkspaceDirectTransferService } = (await import(
           modulePath
@@ -159,7 +168,7 @@ test('Workspace upload and Range downloads reuse one ICE channel and preserve ex
             },
             signal: AbortSignal.timeout(8_000)
           });
-          const downloads = ranges.map(async (range) => {
+          const download = async (range: (typeof ranges)[number], revokeOnFirstByte = false) => {
             const destination = new Uint8Array(range.length);
             let received = 0;
             let writes = 0;
@@ -184,6 +193,7 @@ test('Workspace upload and Range downloads reuse one ICE channel and preserve ex
                   destination.set(chunk, received);
                   received += chunk.byteLength;
                   writes++;
+                  if (revokeOnFirstByte && writes === 1) await host.revokeWorkspace();
                 },
                 async close() {
                   if (received !== range.length) throw new Error('Truncated destination');
@@ -197,9 +207,17 @@ test('Workspace upload and Range downloads reuse one ICE channel and preserve ex
                 new Uint8Array(await crypto.subtle.digest('SHA-256', destination))
               )
             };
-          });
-          const [output] = await Promise.all([Promise.all(downloads), upload]);
-          return { channels, output };
+          };
+          const [output] = await Promise.all([
+            Promise.all(ranges.map((range) => download(range))),
+            upload
+          ]);
+          const afterRevocation = await download(ranges[0]!, true);
+          const newOpenError = await download(ranges[1]!).then(
+            () => null,
+            (error: Error) => error.message
+          );
+          return { channels, output, afterRevocation, newOpenError };
         } finally {
           service.close();
         }
@@ -207,6 +225,9 @@ test('Workspace upload and Range downloads reuse one ICE channel and preserve ex
       { modulePath, nodeId, generation, size: bytes.length, ranges, uploadId }
     );
     expect(actual.channels).toEqual(['mar-node-stream']);
+    expect(actual.afterRevocation.checksum).toEqual(actual.output[0]?.checksum);
+    expect(actual.afterRevocation.writes).toBeGreaterThan(1);
+    expect(actual.newOpenError).toBe('DIRECT_TRANSFER_NOT_AUTHORIZED');
     await expect(readFile(join(directory, 'upload.bin'))).rejects.toMatchObject({ code: 'ENOENT' });
     await uploadService.complete(uploadId);
     const uploaded = await readFile(join(directory, 'upload.bin'));

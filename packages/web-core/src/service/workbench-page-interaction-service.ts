@@ -27,6 +27,7 @@ import { toolChangeOpenIntent } from './tool-change-review-service.js';
 import type { FileChangeEntry } from '../util/conversation-presentation.js';
 import { copyConversationMessage as copyMessage } from './workbench-conversation-copy-service.js';
 import { isHtmlFile } from '../util/file-preview.js';
+import { needsReadablePreviewCheck } from './workspace-file-preview-service.js';
 import type { ConversationImagePreview } from './conversation-image-service.js';
 
 export interface WorkbenchPageInteractionOptions {
@@ -153,6 +154,7 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     if (
       preferGitChanges &&
       isHtmlFile(workspacePath) &&
+      (external || !needsReadablePreviewCheck(workspacePath)) &&
       !workspacePath.startsWith('/') &&
       !/^[a-z]:\//i.test(workspacePath) &&
       !workspacePath.split('/').some((segment) => segment === '..' || segment === '')
@@ -224,6 +226,7 @@ export interface WorkbenchInteractionsView {
   closeQuickOpenFile: (selected?: boolean) => void;
   conversationImagePreview: ConversationImagePreview | undefined;
   conversationImagePreviewOpen: boolean;
+  invalidateConversationFilePreview: () => void;
   handleConversationImagePreviewError: (url: string) => Promise<void>;
   openQuickWorkspaceFile: (
     path: string,

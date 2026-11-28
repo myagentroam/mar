@@ -74,7 +74,29 @@ function createWorkbench(workspacePath: string, repositoryRoot?: string) {
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => undefined,
-    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    access: createFileAccessFixture({
+      http,
+      transfers: () => ({
+        async readPreviewRange(file, limit) {
+          const { file: result } = (await request(
+            `/api/workspaces/workspace/files/read?${new URLSearchParams({
+              path: file.path,
+              limit: String(limit),
+              ...(file.repositoryPath === undefined ? {} : { repositoryPath: file.repositoryPath }),
+              ...(file.worktreePath === undefined ? {} : { worktreePath: file.worktreePath })
+            })}`
+          )) as { file: { content: string; revision: string } };
+          const bytes = new TextEncoder().encode(result.content);
+          return {
+            bytes,
+            size: bytes.length,
+            revision: result.revision,
+            offset: 0,
+            nextOffset: null
+          };
+        }
+      })
+    }),
     preview: { onWritten: vi.fn() },
     navigation: { http, onFailure: vi.fn(), onFileTarget: vi.fn() }
   });

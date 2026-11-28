@@ -29,6 +29,19 @@ interface FileRead {
   readonly revision?: string;
 }
 
+export function needsReadablePreviewCheck(path: string): boolean {
+  return isComposerAttachmentResourcePath(path) || path.startsWith('.mar/temp-files/');
+}
+
+function requiresReadableCheck(target: WorkspaceFilePreviewTarget): boolean {
+  return (
+    target.history === undefined &&
+    target.repositoryPath === undefined &&
+    target.worktreePath === undefined &&
+    needsReadablePreviewCheck(target.path)
+  );
+}
+
 export function createWorkspaceFilePreviewService(input: {
   readonly access: (target: WorkspaceFilePreviewTarget) => WorkspaceFileAccess;
   readonly onWritten: (target: WorkspaceFilePreviewTarget) => void | Promise<void>;
@@ -80,6 +93,21 @@ export function createWorkspaceFilePreviewService(input: {
     releaseUrl(state);
     pages.delete(id);
   }
+  function suspendPrivateRead(id: number): (() => void) | undefined {
+    const state = pages.get(id);
+    const target = state?.target.value;
+    if (!state?.readController || !target || !requiresReadableCheck(target)) return;
+    // During a confirmed leave, keep the loading shell without releasing any
+    // private data. An interrupted leave can resume only the same retained page.
+    const operation = ++state.operation;
+    state.readController.abort();
+    state.readController = undefined;
+    const size = state.fileContent.value?.size;
+    return () => {
+      if (pages.get(id) === state && state.operation === operation)
+        void open(id, target, size === undefined ? {} : { size });
+    };
+  }
   function reset() {
     for (const id of pages.keys()) close(id);
   }
@@ -122,6 +150,13 @@ export function createWorkspaceFilePreviewService(input: {
     state.loading.value = true;
     state.error.value = undefined;
     try {
+      // Opening and authorizing a private preview are separate: do not publish a
+      // content URL or read the body until the current resource passes the check.
+      if (requiresReadableCheck(target)) {
+        const result = await transfers.read(target, 1, readController.signal);
+        if (!current()) return;
+        if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
+      }
       // Native media retains HTTP caching and playback; file body reads have no HTTP fallback.
       if (nativePreview) {
         if (target.history !== undefined) {
@@ -262,11 +297,6 @@ export function createWorkspaceFilePreviewService(input: {
     return revision;
   }
 
-  async function checkReadable(target: WorkspaceFilePreviewTarget): Promise<void> {
-    const result = await input.access(target).read(target, 1);
-    if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
-  }
-
   async function download(id: number): Promise<void> {
     const state = pages.get(id),
       target = state?.target.value;
@@ -304,7 +334,7 @@ export function createWorkspaceFilePreviewService(input: {
       );
     }
   }
-  return { page, open, save, checkReadable, download, downloadTarget, close, reset };
+  return { page, open, save, download, downloadTarget, suspendPrivateRead, close, reset };
 }
 
 function previewContent(path: string, result: FileRead): WorkspaceFilePreviewContent {

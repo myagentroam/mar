@@ -1,6 +1,7 @@
 import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
 import { openPrivateTerminalBroker, TerminalBrokerClient } from './terminal-broker-client.mjs';
+import { connectCliNodeRelay } from './node-relay.mjs';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 
@@ -149,6 +150,10 @@ export class MarctlClient {
     return this.#reuseTerminalConnections
       ? new TerminalBrokerClient(config, request, openPrivate)
       : openPrivate();
+  }
+
+  openForwardRelay(nodeId, signal) {
+    return connectCliNodeRelay({ serverUrl: this.#serverUrl, key: this.#key, nodeId }, signal);
   }
 
   openWorkbenchWebSocket(WebSocketClass) {

@@ -138,7 +138,7 @@ const emit = defineEmits<{
 }>();
 const codeEditor = ref<{
   goTo(position: number): void;
-  scrollToLine(line: number, column?: number): void;
+  scrollToLine(line: number, column?: number, moveFocus?: boolean): void;
   cursorPosition(): { readonly line: number; readonly column: number } | undefined;
   positionAt(offset: number): { readonly line: number; readonly column: number } | undefined;
   selectedText(): string;
@@ -388,9 +388,9 @@ function cursorPosition(): { readonly line: number; readonly column: number } | 
   return { line: parts.length, column: (parts.at(-1)?.length ?? 0) + 1 };
 }
 
-function navigateTo(line: number, column?: number): void {
+function navigateTo(line: number, column?: number, moveFocus = true): void {
   if (codeEditorEnabled.value) {
-    codeEditor.value?.scrollToLine(line, column);
+    codeEditor.value?.scrollToLine(line, column, moveFocus);
     return;
   }
   const textarea = fallbackTextArea.value;
@@ -399,7 +399,7 @@ function navigateTo(line: number, column?: number): void {
   const offset = lines.slice(0, line - 1).reduce((sum, part) => sum + part.length + 1, 0);
   const position = Math.min(textarea.value.length, offset + Math.max(0, (column ?? 1) - 1));
   textarea.setSelectionRange(position, position);
-  textarea.focus();
+  if (moveFocus) textarea.focus();
 }
 
 function openFind(): boolean {

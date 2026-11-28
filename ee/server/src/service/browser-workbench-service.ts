@@ -15,9 +15,11 @@ import {
   type BrowserAttachmentIdentity
 } from '@myagentroam/server-core/browser-attachment-coordinator';
 import type { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
-import type {
-  NodeRequestAuthorization,
-  UserNodeAuthorization
+import {
+  matchesNodeResource,
+  type NodeResourceScope,
+  type NodeRequestAuthorization,
+  type UserNodeAuthorization
 } from '@myagentroam/server-core/node-access-contracts';
 import type {
   WorkbenchDirectTransferIdentity,
@@ -331,8 +333,12 @@ export class BrowserWorkbenchService {
       current.scope.abort();
   }
 
-  revalidateFileAuthorizations(): Promise<void> {
-    return this.fileTickets.revalidate();
+  async revalidateAuthorizations(scope: NodeResourceScope): Promise<void> {
+    const matches = (target: Scope) => matchesNodeResource(scope, target);
+    await Promise.all([
+      this.attachments.revalidateAuthorizations(matches),
+      this.fileTickets.revalidate(matches)
+    ]);
   }
 
   private async canTransfer(ticket: FileTicket): Promise<boolean> {
@@ -368,7 +374,7 @@ export class BrowserWorkbenchService {
   }
 
   revokeConnection(id: string): void {
-    void this.fileTickets.revalidate();
+    void this.fileTickets.revalidate((ticket) => ticket.connectionId === id);
     void this.attachments.revokeWhere(
       (identity) => identity.connectionId === id,
       'BROWSER_CONTROL_DISCONNECTED'
@@ -376,7 +382,7 @@ export class BrowserWorkbenchService {
   }
 
   revokeNode(id: string): void {
-    void this.fileTickets.revalidate();
+    void this.fileTickets.revalidate((ticket) => ticket.nodeId === id);
     void this.attachments.revokeWhere(
       (_identity, target) => target.nodeId === id,
       'BROWSER_NODE_CHANGED'

@@ -1118,7 +1118,7 @@ test('sent image attachments in Aside use the shared preview dialog and their ow
   await expect(dialog).not.toBeVisible();
   expired = true;
   await asideImage.click();
-  await expect(page.locator('.mar-message').filter({ hasText: '文件已过期' })).toBeVisible();
+  await expect(page.locator('.attachment-preview-dialog').getByText('文件已过期')).toBeVisible();
   await expect(dialog).not.toBeVisible();
   expect(reads).toBe(3);
 });

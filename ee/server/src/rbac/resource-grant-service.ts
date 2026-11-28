@@ -228,7 +228,14 @@ export class ResourceGrantService {
     }));
   }
 
-  async removeGrant(actorUserId: number, grantId: string): Promise<GrantResourceType> {
+  async removeGrant(
+    actorUserId: number,
+    grantId: string
+  ): Promise<{
+    resourceType: GrantResourceType;
+    resourceId: string;
+    workspaceId?: string;
+  }> {
     const connection = await this.database.raw.getConnection();
     try {
       await connection.beginTransaction();
@@ -289,7 +296,11 @@ export class ResourceGrantService {
           }
         )
       );
-      return type;
+      return {
+        resourceType: type,
+        resourceId: id,
+        ...(type === 'WORKSPACE' ? { workspaceId: String(grant['workspace_id']) } : {})
+      };
     } catch (error) {
       discardMysqlAudits(connection);
       await connection.rollback();

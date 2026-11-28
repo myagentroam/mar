@@ -26,6 +26,11 @@ async function prepareFiles(page: Page, extraFiles: string[] = []): Promise<void
   await mockWorkspaceFileRelay(page.context(), 'node-1', 'workspace-1', (path) =>
     Buffer.from(contentFor(path))
   );
+  await page
+    .context()
+    .route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+      json(route, { preparation: { state: 'UNAVAILABLE' } })
+    );
   await page.context().route(/\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/, (route) =>
     json(route, {
       files: {
@@ -371,7 +376,7 @@ async function openFile(page: Page, path: string): Promise<void> {
     .evaluate((element: HTMLElement) => element.click());
   await expect(page.locator('.workspace-file-tab.is-active')).toContainText(path);
   await expect(
-    page.getByRole('region', { name: `${path} 文件预览` }).locator('.cm-content')
+    page.getByRole('tabpanel', { name: path, exact: true }).locator('.cm-content')
   ).toBeVisible();
 }
 

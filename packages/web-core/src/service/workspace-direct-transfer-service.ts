@@ -117,6 +117,7 @@ export interface WorkspaceDirectTransferServiceOptions {
   readonly probeRetryDelaysMs?: readonly number[];
 }
 
+/** Owns Web Direct peers, carrier readiness, and probe retries; callers own logical path selection. */
 export function createWorkspaceDirectTransferService(
   options: WorkspaceDirectTransferServiceOptions
 ) {
@@ -156,7 +157,7 @@ export function createWorkspaceDirectTransferService(
     | {
         readonly transportSessionId: string;
         readonly nodeGeneration: string;
-        readyStreamPath(signal: AbortSignal): Promise<TransportSession['streamPath'] | undefined>;
+        readonly streamPath: TransportSession['streamPath'] | undefined;
         createChannel(label: string): RTCDataChannel;
         release(): void;
       }
@@ -173,8 +174,7 @@ export function createWorkspaceDirectTransferService(
     return {
       transportSessionId: transport.directSessionId,
       nodeGeneration: transport.request.nodeGeneration,
-      async readyStreamPath(signal) {
-        if (!(await waitForStreamChannel(transport.streamChannel, signal))) return undefined;
+      get streamPath() {
         return transportReady(transport) && !transport.streamPath.closed && !released
           ? transport.streamPath
           : undefined;
@@ -291,7 +291,15 @@ export function createWorkspaceDirectTransferService(
     nodeId: string,
     nodeGeneration: string
   ): Promise<'DIRECT_AVAILABLE' | 'RELAY_ONLY'> {
-    clearRetry(nodeId);
+    // Starting a probe consumes its timer, not the same-generation failure history.
+    const retry = retries.get(nodeId);
+    if (retry !== undefined) {
+      if (retry.generation !== nodeGeneration) clearRetry(nodeId);
+      else if (retry.timer !== undefined) {
+        clearTimeout(retry.timer);
+        retry.timer = undefined;
+      }
+    }
     deferredReleaseNodes.delete(nodeId);
     const current = transportsByNode.get(nodeId);
     if (current !== undefined && current.request.nodeGeneration === nodeGeneration) {
@@ -299,9 +307,12 @@ export function createWorkspaceDirectTransferService(
       return current.request.promise;
     }
     if (current !== undefined) closeTransport(current, 'DIRECT_NODE_GENERATION_MISMATCH', false);
-    for (const request of transportRequests.values())
-      if (request.nodeId === nodeId && request.nodeGeneration === nodeGeneration)
-        return request.promise;
+    for (const request of transportRequests.values()) {
+      if (request.nodeId !== nodeId) continue;
+      if (request.nodeGeneration === nodeGeneration) return request.promise;
+      // Retire a superseded prepare before its late reply can install an old peer.
+      retireTransportRequest(request);
+    }
     let resolve!: (result: 'DIRECT_AVAILABLE' | 'RELAY_ONLY') => void;
     const promise = new Promise<'DIRECT_AVAILABLE' | 'RELAY_ONLY'>(
       (complete) => (resolve = complete)
@@ -480,6 +491,9 @@ export function createWorkspaceDirectTransferService(
       peer.ondatachannel = (event) => receiveDesktopChannel(transport, event.channel);
       transportsBySession.set(directSessionId, transport);
       transportsByNode.set(request.nodeId, transport);
+      streamChannel.addEventListener('open', () => finishTransportIfReady(transport), {
+        once: true
+      });
       streamChannel.addEventListener(
         'close',
         () => closeTransport(transport, 'DIRECT_CHANNEL_CLOSED', false),
@@ -564,8 +578,13 @@ export function createWorkspaceDirectTransferService(
   }
 
   function finishTransportIfReady(transport: TransportSession): void {
-    if (!transportReady(transport)) return;
+    if (
+      transportsBySession.get(transport.directSessionId) !== transport ||
+      !transportReady(transport)
+    )
+      return;
     if (transportRequests.delete(transport.request.requestId)) {
+      // Keep the existing deadline until the shared byte carrier is usable, not just the ICE peer.
       clearTimeout(transport.request.timer);
       clearRetry(transport.request.nodeId);
       // Keep the bootstrap channel owned by the transport until transport teardown.
@@ -667,6 +686,12 @@ export function createWorkspaceDirectTransferService(
         options.send({ type: 'direct.cancel', directSessionId: session.directSessionId });
       finishTransfer(session, code);
     }
+  }
+
+  function retireTransportRequest(request: TransportRequest): void {
+    transportRequests.delete(request.requestId);
+    clearTimeout(request.timer);
+    request.resolve('RELAY_ONLY');
   }
 
   function failTransportRequest(requestId: string, code: string): void {
@@ -835,10 +860,7 @@ export function createWorkspaceDirectTransferService(
       attempt,
       timer: undefined as ReturnType<typeof setTimeout> | undefined
     };
-    entry.timer = setTimeout(() => {
-      retries.delete(nodeId);
-      void ensureTransport(nodeId, generation);
-    }, delay);
+    entry.timer = setTimeout(() => void ensureTransport(nodeId, generation), delay);
     retries.set(nodeId, entry);
   }
 
@@ -878,12 +900,8 @@ export function createWorkspaceDirectTransferService(
       removeTransport(transport, 'DIRECT_TRANSPORT_RELEASED', true);
       transport.request.resolve('RELAY_ONLY');
     }
-    for (const request of [...transportRequests.values()]) {
-      if (request.nodeId !== nodeId) continue;
-      transportRequests.delete(request.requestId);
-      clearTimeout(request.timer);
-      request.resolve('RELAY_ONLY');
-    }
+    for (const request of transportRequests.values())
+      if (request.nodeId === nodeId) retireTransportRequest(request);
     options.onProbeResultChange?.();
   }
 
@@ -1052,28 +1070,9 @@ function transportReady(transport: TransportSession): boolean {
   return (
     transport.peerConnected &&
     transport.serverOpened &&
-    transport.peer.connectionState === 'connected'
+    transport.peer.connectionState === 'connected' &&
+    transport.streamChannel.readyState === 'open'
   );
-}
-
-async function waitForStreamChannel(
-  channel: RTCDataChannel,
-  signal: AbortSignal
-): Promise<boolean> {
-  signal.throwIfAborted();
-  if (channel.readyState !== 'connecting') return channel.readyState === 'open';
-  return new Promise((resolve, reject) => {
-    const listeners = new AbortController();
-    const finish = () => {
-      listeners.abort();
-      if (signal.aborted) reject(signal.reason);
-      else resolve(channel.readyState === 'open');
-    };
-    const options = { once: true, signal: listeners.signal };
-    channel.addEventListener('open', finish, options);
-    channel.addEventListener('close', finish, options);
-    signal.addEventListener('abort', finish, options);
-  });
 }
 
 async function applySignal(peer: RTCPeerConnection, signal: DirectSignal): Promise<void> {

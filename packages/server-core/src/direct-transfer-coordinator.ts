@@ -1,5 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { emitAudit, type AuditObserver } from './audit.js';
+import {
+  isOrdinaryFileStream,
+  matchesNodeResource,
+  type NodeResourceScope
+} from './node-access-contracts.js';
 import type {
   DirectBrowserMessage,
   DirectNodeEvent,
@@ -51,6 +56,7 @@ interface DirectFileTransferSession extends DirectSessionBase {
   readonly transportSessionId: string;
   readonly transfer: DirectTransferDescriptor;
   grant?: string;
+  opened?: true;
 }
 
 type DirectSession = DirectTransportSession | DirectFileTransferSession;
@@ -63,6 +69,7 @@ export interface DirectTransferCoordinatorOptions {
     workspaceId: string | undefined
   ) => boolean | Promise<boolean>;
   readonly authorizeTransport?: (userId: number, nodeId: string) => boolean | Promise<boolean>;
+  readonly ownsPage: (identity: DirectTransferBrowserIdentity) => boolean;
   readonly sendNode: (nodeId: string, type: string, payload: unknown) => boolean;
   readonly sendBrowser: (
     connectionId: string,
@@ -72,6 +79,7 @@ export interface DirectTransferCoordinatorOptions {
   readonly randomId?: () => string;
 }
 
+/** Owns ICE negotiation and file grants; Workbench owns the page identity and resume lifetime. */
 export class DirectTransferCoordinator {
   private readonly sessions = new Map<string, DirectSession>();
   private readonly now: () => number;
@@ -127,10 +135,16 @@ export class DirectTransferCoordinator {
       return;
     }
     if (message.type === 'direct.heartbeat') {
-      if (!(await this.isAuthorized(session))) {
+      // A carrier lease is only liveness. A finite transfer stops checking ACLs after OPEN.
+      if (
+        session.purpose === 'TRANSFER' &&
+        !this.mayFinish(session) &&
+        !(await this.isAuthorized(session))
+      ) {
         await this.closeSession(session, 'DIRECT_TRANSFER_NOT_AUTHORIZED');
         return;
       }
+      if (this.sessions.get(session.directSessionId) !== session) return;
       if (session.purpose === 'TRANSPORT') session.expiresAt = this.now() + TRANSPORT_LEASE_MS;
       if (
         !this.options.sendNode(session.nodeId, 'direct.heartbeat', {
@@ -195,6 +209,10 @@ export class DirectTransferCoordinator {
       return;
     }
     if (session.purpose !== 'TRANSFER') return;
+    if (event.type === 'direct.opened') {
+      if (session.grant !== undefined) session.opened = true;
+      return;
+    }
     void this.options.sendBrowser(session.workbenchConnectionId, event);
     if (event.type === 'direct.complete') {
       this.auditUpload(session, 'workspace.files.upload.complete');
@@ -246,13 +264,43 @@ export class DirectTransferCoordinator {
   }
 
   revokeConnection(connectionId: string, code: string): void {
+    const identityEnded =
+      code === 'DIRECT_USER_SESSION_CLOSED' || code === 'DIRECT_USER_SESSIONS_CLOSED';
     for (const session of [...this.sessions.values()])
-      if (session.workbenchConnectionId === connectionId) void this.closeSession(session, code);
+      if (session.workbenchConnectionId === connectionId) {
+        // Login invalidation retires business grants, not the shared transport lease.
+        if (identityEnded) {
+          if (session.purpose === 'TRANSPORT') {
+            session.disconnected = true;
+            continue;
+          }
+          if (this.mayFinish(session)) continue;
+        }
+        void this.closeSession(session, code);
+      }
   }
 
   revokeNode(nodeId: string, code: string): void {
     for (const session of [...this.sessions.values()])
       if (session.nodeId === nodeId) void this.closeSession(session, code);
+  }
+
+  async revalidateAuthorizations(scope: NodeResourceScope): Promise<void> {
+    await Promise.all(
+      [...this.sessions.values()].map(async (session) => {
+        if (
+          session.purpose !== 'TRANSFER' ||
+          this.mayFinish(session) ||
+          !matchesNodeResource(scope, {
+            nodeId: session.nodeId,
+            workspaceId: session.transfer.resource.workspaceId
+          })
+        )
+          return;
+        if (!(await this.isAuthorized(session).catch(() => false)))
+          await this.closeSession(session, 'DIRECT_TRANSFER_NOT_AUTHORIZED');
+      })
+    );
   }
 
   close(): void {
@@ -313,6 +361,8 @@ export class DirectTransferCoordinator {
       request.purpose === 'TRANSPORT' && this.options.authorizeTransport
         ? await this.options.authorizeTransport(identity.userId, request.nodeId)
         : await this.options.authorize(identity.userId, request.nodeId, workspaceId);
+    // Revocation may have retired the page before this preparation could register a session.
+    if (!this.options.ownsPage(identity)) return;
     if (!allowed) {
       await this.error(identity.workbenchConnectionId, {
         requestId: request.requestId,
@@ -386,6 +436,7 @@ export class DirectTransferCoordinator {
       transport?.purpose !== 'TRANSPORT' ||
       transport.nodeId !== request.nodeId ||
       transport.nodeGeneration !== request.nodeGeneration ||
+      transport.disconnected ||
       !transportReady(transport)
     ) {
       await this.error(identity.workbenchConnectionId, {
@@ -498,6 +549,7 @@ export class DirectTransferCoordinator {
       await this.closeSession(transfer, 'DIRECT_TRANSFER_NOT_AUTHORIZED');
       return;
     }
+    if (this.sessions.get(transfer.directSessionId) !== transfer) return;
     const openExpiresAt = Math.min(this.now() + OPEN_TTL_MS, transfer.expiresAt);
     const grant = `${this.randomId()}.${this.randomId()}`;
     transfer.grant = grant;
@@ -567,13 +619,15 @@ export class DirectTransferCoordinator {
     return count;
   }
 
-  private async isAuthorized(session: DirectSession): Promise<boolean> {
-    if (session.purpose === 'TRANSPORT' && this.options.authorizeTransport)
-      return this.options.authorizeTransport(session.userId, session.nodeId);
+  private mayFinish(session: DirectFileTransferSession): boolean {
+    return session.opened === true && isOrdinaryFileStream(session.transfer);
+  }
+
+  private async isAuthorized(session: DirectFileTransferSession): Promise<boolean> {
     return this.options.authorize(
       session.userId,
       session.nodeId,
-      session.purpose === 'TRANSFER' ? session.transfer.resource.workspaceId : undefined
+      session.transfer.resource.workspaceId
     );
   }
 

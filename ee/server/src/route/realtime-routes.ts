@@ -168,19 +168,33 @@ export function registerRealtimeRoutes(input: {
               socket.close(1008, 'NODE_RELAY_AUTH_INVALID');
               return;
             }
-            // Cookie authorization may have ended while Node access was being checked.
-            if (
-              header === undefined &&
-              authorizeRealtimeConnection(socket, request, database, publicOrigin)?.sessionHash !==
-                user.sessionHash
-            )
+            // The login can end while Node access is checked, before the carrier is registered.
+            if (header === undefined) {
+              if (
+                authorizeRealtimeConnection(socket, request, database, publicOrigin)
+                  ?.sessionHash !== user.sessionHash
+              )
+                return;
+            } else if ((await relayAccess.credentials.authenticateContext(header)) === undefined) {
+              socket.close(1008, 'NODE_RELAY_AUTH_INVALID');
               return;
+            }
             nodeControl.attachClientRelay(
               socket,
               nodeId,
               { userId: user.userId, sessionHash: user.sessionHash },
               bearer?.expiresAt,
-              !normalAccess
+              !normalAccess,
+              bearer === undefined
+                ? undefined
+                : async () => {
+                    // A carrier can outlive the credentials that admitted it. Check only the
+                    // forwarding lease, not each TCP connection underneath it.
+                    return (
+                      (await relayAccess.canUseNode(user.userId, nodeId)) &&
+                      (await relayAccess.credentials.authenticateContext(header)) !== undefined
+                    );
+                  }
             );
           })()
             .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))
