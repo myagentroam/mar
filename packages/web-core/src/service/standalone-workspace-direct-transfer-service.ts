@@ -49,6 +49,7 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
       : undefined;
   const direct = createWorkspaceDirectTransferService({
     send: (message) => live.sendDirect(message),
+    onTransportReady: (nodeId) => void connections.directReady(nodeId),
     shouldRetryProbe: (nodeId, nodeGeneration) =>
       active() && nodeId === input.nodeId && nodeGeneration === generation
   });
@@ -72,6 +73,8 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
   });
   const connections = createWorkbenchNodeConnectionService({
     http,
+    // Like the selected Workspace, this window owns its single target until close.
+    isNodeActive: active,
     async connectDirect(nodeId, signal) {
       // Reuse a warm peer; on a cold start the bounded ICE probe races Relay.
       if (generation === undefined || !direct.isConnected(nodeId, generation)) await ready;

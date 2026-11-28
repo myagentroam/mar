@@ -376,6 +376,29 @@ describe('Workspace direct transfer browser service', () => {
     ).toHaveLength(1);
   });
 
+  it('notifies the connection owner once when a failed probe later recovers', async () => {
+    vi.useFakeTimers();
+    const onTransportReady = vi.fn();
+    const f = fixture(['failed-one', 'failed-two', 'transport-request'], {
+      onTransportReady,
+      probeTimeoutMs: 100,
+      probeRetryDelaysMs: [10],
+      shouldRetryProbe: () => true
+    });
+    try {
+      const failed = f.service.ensureTransport('node-1', 'generation-1');
+      await vi.advanceTimersByTimeAsync(200);
+      await expect(failed).resolves.toBe('RELAY_ONLY');
+      expect(onTransportReady).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10);
+      await connect(f);
+      f.peers[0]!.connected();
+      expect(onTransportReady).toHaveBeenCalledExactlyOnceWith('node-1');
+    } finally {
+      f.service.close();
+    }
+  });
+
   it('defers transport release until the active transfer finishes', async () => {
     const f = fixture(['transport-request', 'upload-request']);
     await connect(f);

@@ -1,5 +1,6 @@
 import { executionActivity } from './support/execution-activity.js';
 import { access, mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -651,6 +652,115 @@ it.each(['run', 'plan', 'compact'] as const)(
       f.unblock();
       await pending;
       await f.close();
+    }
+  }
+);
+
+it.each([
+  { scope: 'warm', blockedMethod: 'tools/list' },
+  { scope: 'cold', blockedMethod: 'tools/list' },
+  { scope: 'cold', blockedMethod: 'notifications/initialized' },
+  { scope: 'execution', blockedMethod: 'tools/list' },
+  { scope: 'execution', blockedMethod: 'notifications/initialized' }
+] as const)(
+  'stops during a stalled $scope MCP $blockedMethod without waiting for a response',
+  async ({ scope, blockedMethod }) => {
+    const f = await fixture('admission');
+    f.refresh.mockRestore();
+    const reached = Promise.withResolvers<void>();
+    const unblock = Promise.withResolvers<void>();
+    const disconnected = vi.fn();
+    let stall = scope !== 'warm';
+    let initializations = 0;
+    const server = createServer(async (request, response) => {
+      if (request.method !== 'POST') {
+        response.writeHead(405).end();
+        return;
+      }
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const { id, method, params } = JSON.parse(body) as {
+        id?: number;
+        method: string;
+        params?: { protocolVersion: string };
+      };
+      if (method === 'initialize') initializations += 1;
+      if (method === blockedMethod && stall) {
+        response.once('close', () => {
+          if (!response.writableEnded) disconnected();
+        });
+        reached.resolve();
+        await unblock.promise;
+      }
+      if (id === undefined) {
+        response.writeHead(202).end();
+        return;
+      }
+      const result =
+        method === 'initialize'
+          ? {
+              protocolVersion: params?.protocolVersion,
+              capabilities: { tools: {} },
+              serverInfo: { name: 'fixture', version: '1' }
+            }
+          : { tools: [] };
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ jsonrpc: '2.0', id, result }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Fixture server did not bind.');
+    const mcpServers = [
+      {
+        name: 'fixture',
+        transport: 'HTTP',
+        url: `http://127.0.0.1:${address.port}/mcp`,
+        ...(scope === 'execution' ? { lifecycle: 'EXECUTION' } : {})
+      }
+    ];
+    let pending: Promise<void> | undefined;
+    try {
+      if (scope === 'warm') {
+        await f.run('warmup', { mcpServers });
+        stall = true;
+      }
+      const previousExecutions = f.session.run.mock.calls.length;
+      pending = f.run('stopped', { mcpServers });
+      await reached.promise;
+      expect(f.controller.cancel('stopped', 'INTERRUPT')).toBe(true);
+      await vi.waitFor(() =>
+        expect(f.host.emit).toHaveBeenCalledWith(
+          'stopped',
+          'run.cancelled',
+          { status: 'CANCELLED' },
+          'CANCELLED'
+        )
+      );
+      expect(f.session.run).toHaveBeenCalledTimes(previousExecutions);
+      expect(f.host.emitItem).not.toHaveBeenCalled();
+      if (scope !== 'warm') await vi.waitFor(() => expect(disconnected).toHaveBeenCalled());
+      else expect(disconnected).not.toHaveBeenCalled();
+
+      stall = false;
+      if (scope === 'warm') unblock.resolve();
+      await f.run('next', { mcpServers });
+      expect(initializations).toBe(scope === 'warm' ? 1 : 2);
+      expect(f.session.run).toHaveBeenCalledTimes(previousExecutions + 1);
+      expect(f.host.emit).toHaveBeenCalledWith(
+        'next',
+        'run.completed',
+        { status: 'SUCCEEDED' },
+        'SUCCEEDED'
+      );
+    } finally {
+      unblock.resolve();
+      try {
+        await pending;
+        await f.close();
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
     }
   }
 );

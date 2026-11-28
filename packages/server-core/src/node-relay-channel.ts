@@ -4,6 +4,7 @@ import {
   decodeNodeRelayHandshake,
   encodeNodeRelayHandshake,
   encodeNodeStreamFrame,
+  NODE_RELAY_OFFLINE_CLOSE_CODE,
   type NodeRelayHandshake,
   type NodeStreamFrame
 } from '@myagentroam/protocol/node-stream-wire';
@@ -15,6 +16,7 @@ type NodeEntry = { socket: WebSocket; relay: NodeStreamRelay; clients: Set<WebSo
 type Options = {
   /** Authenticate, then return a synchronous check of the captured control connection. */
   admitNode(auth: NodeAuth): Promise<(() => boolean) | undefined>;
+  canWaitForNode(nodeId: string): boolean;
   maxStreams: { perClient: number; perNode: number };
   maxBufferedBytes: number;
   traffic?: {
@@ -22,10 +24,12 @@ type Options = {
     backpressure(bufferedBytes: number): void;
   };
 };
+const RELAY_READY_GRACE_MS = 2_000;
 
 /** Owns relay carrier admission and shutdown; NodeStreamRelay owns mappings, not sockets. */
 export class NodeRelayChannel {
   readonly #nodes = new Map<string, NodeEntry>();
+  readonly #waitingClients = new Map<string, Set<(entry?: NodeEntry) => void>>();
   readonly #sockets = new Set<WebSocket>();
   readonly #authentications = new Set<Promise<void>>();
   #closed = false;
@@ -40,7 +44,7 @@ export class NodeRelayChannel {
     deadline.unref();
     socket.once('close', () => {
       clearTimeout(deadline);
-      if (bound && this.#nodes.get(bound.id) === bound.entry) this.disconnectNode(bound.id);
+      if (bound && this.#nodes.get(bound.id) === bound.entry) this.#disconnectCarrier(bound.id);
     });
     socket.on('message', (raw, binary) => {
       try {
@@ -67,7 +71,7 @@ export class NodeRelayChannel {
               socket.terminate();
               return;
             }
-            this.disconnectNode(auth.nodeId);
+            this.#disconnectCarrier(auth.nodeId);
             const entry = {
               socket,
               relay: new NodeStreamRelay(
@@ -80,6 +84,8 @@ export class NodeRelayChannel {
             this.#nodes.set(auth.nodeId, entry);
             clearTimeout(deadline);
             this.#ready(socket);
+            if (socket.readyState === socket.OPEN)
+              for (const admit of this.#waitingClients.get(auth.nodeId) ?? []) admit(entry);
           })
           .catch(() => socket.terminate());
         this.#authentications.add(pending);
@@ -94,10 +100,42 @@ export class NodeRelayChannel {
   attachClient(socket: WebSocket, nodeId: string, authorize: NodeStreamAuthorizer): void {
     if (!this.#track(socket)) return;
     const node = this.#nodes.get(nodeId);
-    if (node === undefined || node.socket.readyState !== node.socket.OPEN) {
-      socket.close(4004, 'NODE_OFFLINE');
+    if (node !== undefined && node.socket.readyState === node.socket.OPEN) {
+      this.#attachReadyClient(socket, node, authorize);
       return;
     }
+    if (!this.options.canWaitForNode(nodeId)) {
+      socket.close(NODE_RELAY_OFFLINE_CLOSE_CODE, 'NODE_OFFLINE');
+      return;
+    }
+
+    // Wait for carrier admission, not a business OPEN. Web, CLI and shares all use this boundary.
+    const waiting = this.#waitingClients.get(nodeId) ?? new Set<(entry?: NodeEntry) => void>();
+    this.#waitingClients.set(nodeId, waiting);
+    const cleanup = () => {
+      clearTimeout(deadline);
+      socket.off('close', cleanup);
+      socket.off('message', rejectEarlyFrame);
+      waiting.delete(admit);
+      if (waiting.size === 0) this.#waitingClients.delete(nodeId);
+    };
+    const admit = (entry?: NodeEntry) => {
+      cleanup();
+      if (socket.readyState !== socket.OPEN) return;
+      if (entry === undefined) socket.close(NODE_RELAY_OFFLINE_CLOSE_CODE, 'NODE_OFFLINE');
+      else this.#attachReadyClient(socket, entry, authorize);
+    };
+    const rejectEarlyFrame = () => {
+      cleanup();
+      socket.close(4002, 'NODE_RELAY_FRAME_INVALID');
+    };
+    const deadline = setTimeout(admit, RELAY_READY_GRACE_MS).unref();
+    waiting.add(admit);
+    socket.once('close', cleanup);
+    socket.once('message', rejectEarlyFrame);
+  }
+
+  #attachReadyClient(socket: WebSocket, node: NodeEntry, authorize: NodeStreamAuthorizer): void {
     const port = node.relay.attachClient((frame) => this.#send(socket, frame), authorize);
     node.clients.add(socket);
     socket.on('message', (raw, binary) => {
@@ -117,11 +155,16 @@ export class NodeRelayChannel {
   }
 
   disconnectNode(nodeId: string): void {
+    for (const reject of this.#waitingClients.get(nodeId) ?? []) reject();
+    this.#disconnectCarrier(nodeId);
+  }
+
+  #disconnectCarrier(nodeId: string): void {
     const entry = this.#nodes.get(nodeId);
     if (entry === undefined) return;
     this.#nodes.delete(nodeId);
     entry.relay.close();
-    for (const client of entry.clients) client.close(4004, 'NODE_OFFLINE');
+    for (const client of entry.clients) client.close(NODE_RELAY_OFFLINE_CLOSE_CODE, 'NODE_OFFLINE');
     entry.socket.terminate();
   }
 

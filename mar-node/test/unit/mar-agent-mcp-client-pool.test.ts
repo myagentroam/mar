@@ -140,6 +140,71 @@ describe('MCP cache acquisition', () => {
     }
   });
 
+  it('leaves cold initialization owned by the remaining waiter when another Run stops', async () => {
+    const { connect } = mockConnections();
+    const ready = Promise.withResolvers<MarAgentMcpClientPool>();
+    const pool = new MarAgentMcpClientPool();
+    connect.mockImplementationOnce(async (_servers, _cwd, options) => {
+      const signal = options?.signal;
+      const result = await ready.promise;
+      signal?.throwIfAborted();
+      return result;
+    });
+    const cache = new MarAgentMcpClientCache();
+    const stop = new AbortController();
+    const first = cache.acquire([server()], process.cwd(), { signal: stop.signal });
+    const second = cache.acquire([server()], process.cwd());
+    try {
+      await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
+      const cancelled = expect(first).rejects.toMatchObject({ name: 'AbortError' });
+      stop.abort();
+      await cancelled;
+      ready.resolve(pool);
+      const remaining = await second;
+      expect(remaining.pool).toBe(pool);
+      expect(connect).toHaveBeenCalledOnce();
+      await remaining.release();
+    } finally {
+      ready.resolve(pool);
+      await Promise.allSettled([first, second]);
+      await cache.close();
+    }
+  });
+
+  it('stops waiting for an unrelated idle pool to close without starting a connection', async () => {
+    const { connect } = mockConnections();
+    const cache = new MarAgentMcpClientCache({ maxEntries: 1 });
+    const closing = Promise.withResolvers<void>();
+    const stop = new AbortController();
+    const idle = await cache.acquire([server({ TOKEN: 'old' })], process.cwd());
+    vi.mocked(idle.pool.close).mockReturnValue(closing.promise);
+    await idle.release();
+    const pending = cache.acquire([server({ TOKEN: 'new' })], process.cwd(), {
+      signal: stop.signal
+    });
+    let failure: unknown;
+    void pending.catch((error: unknown) => (failure = error));
+    let shutdown: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() => expect(idle.pool.close).toHaveBeenCalledOnce());
+      stop.abort();
+      await vi.waitFor(() => expect(failure).toBe(stop.signal.reason));
+      expect(connect).toHaveBeenCalledOnce();
+
+      shutdown = cache.close();
+      const first = await Promise.race([
+        shutdown.then(() => 'shutdown'),
+        new Promise<string>((resolve) => setImmediate(() => resolve('transport still closing')))
+      ]);
+      expect(first).toBe('transport still closing');
+    } finally {
+      closing.resolve();
+      await pending.catch(() => undefined);
+      await shutdown;
+      await cache.close();
+    }
+  });
+
   it.each([false, true])(
     'joins the same key created while idle eviction waits (close rejects: %s)',
     async (rejectClose) => {

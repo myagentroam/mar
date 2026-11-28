@@ -6,6 +6,7 @@ export type PopupPlacement =
   | 'bottom-end'
   | 'top'
   | 'top-start'
+  | 'top-end'
   | 'right'
   | 'right-start'
   | 'right-end';
@@ -26,6 +27,7 @@ export function usePopup(onClose: () => void) {
   let placement: PopupPlacement = 'bottom-start';
   let offset: number | undefined;
   let dismissOutside = true;
+  const pendingExits = new WeakMap<HTMLElement, symbol>();
 
   function place() {
     if (!anchor || !surface) return;
@@ -33,8 +35,14 @@ export function usePopup(onClose: () => void) {
     const { clientWidth: width, clientHeight: height } = surface.ownerDocument.documentElement;
     const edge = 8;
     // A zero-size pointer anchor exactly on the viewport edge is still visible.
-    if (anchorElement(anchor)?.isConnected === false || rect.bottom < 0 || rect.top > height) {
-      close();
+    if (
+      anchorElement(anchor)?.isConnected === false ||
+      (anchor instanceof HTMLElement &&
+        (!anchor.getClientRects().length || anchor.closest('[inert]'))) ||
+      rect.bottom < 0 ||
+      rect.top > height
+    ) {
+      dismiss(false);
       return;
     }
     const { style } = surface;
@@ -72,7 +80,7 @@ export function usePopup(onClose: () => void) {
     style.setProperty('--mar-ui-popup-max-height', `${Math.max(0, flip ? above : below)}px`);
     const menuWidth = surface.getBoundingClientRect().width;
     const left =
-      placement === 'bottom-end'
+      placement === 'bottom-end' || placement === 'top-end'
         ? rect.right - menuWidth
         : ['bottom', 'top', 'right'].includes(placement)
           ? rect.left + (rect.width - menuWidth) / 2
@@ -88,18 +96,52 @@ export function usePopup(onClose: () => void) {
     );
   }
 
-  function close() {
+  function hide(popup: HTMLElement, animate: boolean) {
+    if (!popup.hidePopover) {
+      popup.removeAttribute('data-open');
+      return;
+    }
+    if (animate && popup.classList.contains('mar-ui-popup--animated-exit')) {
+      // Logical dismissal is immediate; a fading surface must not retain input or focus.
+      popup.inert = true;
+      popup.setAttribute('aria-hidden', 'true');
+      const view = popup.ownerDocument.defaultView;
+      const nativeExit = view?.CSS.supports(
+        '(overlay: auto) and (transition-behavior: allow-discrete)'
+      );
+      if (!nativeExit && view?.matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+        const exit = Symbol();
+        pendingExits.set(popup, exit);
+        popup.setAttribute('data-closing', '');
+        void Promise.allSettled(popup.getAnimations().map((animation) => animation.finished)).then(
+          () => {
+            if (pendingExits.get(popup) !== exit) return;
+            pendingExits.delete(popup);
+            if (popup.isConnected) popup.hidePopover();
+            popup.removeAttribute('data-closing');
+          }
+        );
+        return;
+      }
+    }
+    popup.hidePopover();
+  }
+
+  function dismiss(animate: boolean) {
     if (!open.value) return;
     listeners?.abort();
     listeners = undefined;
     resizeObserver?.disconnect();
     resizeObserver = undefined;
     open.value = false;
-    if (surface?.hidePopover) surface.hidePopover();
-    else surface?.removeAttribute('data-open');
+    if (surface) hide(surface, animate);
     surface = undefined;
     anchor = undefined;
     onClose();
+  }
+
+  function close() {
+    dismiss(true);
   }
 
   function show(
@@ -128,8 +170,15 @@ export function usePopup(onClose: () => void) {
       place();
       return;
     }
-    if (surface.showPopover) surface.showPopover();
-    else surface.setAttribute('data-open', '');
+    if (surface.showPopover) {
+      if (surface.classList.contains('mar-ui-popup--animated-exit')) {
+        pendingExits.delete(surface);
+        surface.removeAttribute('data-closing');
+        surface.removeAttribute('aria-hidden');
+        surface.inert = false;
+      }
+      surface.showPopover();
+    } else surface.setAttribute('data-open', '');
     open.value = true;
     place();
     if (!open.value) return;
@@ -157,6 +206,6 @@ export function usePopup(onClose: () => void) {
     }
   }
 
-  onBeforeUnmount(close);
+  onBeforeUnmount(() => dismiss(false));
   return { open, show, close };
 }

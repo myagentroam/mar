@@ -505,7 +505,7 @@ export class MarAgentManagedRunController {
       runtime = use.runtime;
       executionModels = runtime.models;
       use.assertUsable();
-      await runtime.mcpLease.pool.refreshForExecution();
+      await runtime.mcpLease.pool.refreshForExecution(controller.signal);
       use.assertUsable();
       const marctlSkill = marctlHostSkill(input.secretEnvironment);
       const executionMcpServers = input.mcpServers
@@ -524,7 +524,8 @@ export class MarAgentManagedRunController {
       if (executionMcpServers.length > 0) {
         executionMcpLease = await this.#mcpClients.acquire(executionMcpServers, input.cwd, {
           reusable: false,
-          authorizationScope: runtime.session.id
+          authorizationScope: runtime.session.id,
+          signal: controller.signal
         });
       }
       use.assertUsable();

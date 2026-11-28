@@ -179,6 +179,15 @@ export class NodeControl extends NodeIdentityControl {
     super(database, (direction, bytes) => traffic?.record('node', direction, bytes));
     this.runtimeCredentials = consumers.runtimeCredentials;
     this.dataRelay = new NodeRelayChannel({
+      canWaitForNode: (nodeId) => {
+        const control = this.sockets.get(nodeId);
+        // A fresh control socket can still report compatible capabilities; a known upgrade-only one cannot admit Relay.
+        return (
+          control !== undefined &&
+          control.readyState === control.OPEN &&
+          (this.allowsNodeBusiness(control) || this.upgradeCapabilities(nodeId) === undefined)
+        );
+      },
       admitNode: async ({ nodeId, credential, controlBinding }) => {
         const control = this.currentDataControl(nodeId, controlBinding);
         if (control === undefined) return undefined;
@@ -351,6 +360,8 @@ export class NodeControl extends NodeIdentityControl {
     nodeId: string,
     capabilities: NodeCapabilities
   ): Promise<void> {
+    // Pending Relay handshakes may predate the first capability report.
+    if (this.isNodeUpgradeOnly(nodeId)) this.dataRelay.disconnectNode(nodeId);
     this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     const generation = this.nodeCapabilities(nodeId)?.remoteDesktop?.nodeGeneration;
     if (generation) {

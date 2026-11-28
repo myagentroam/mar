@@ -18,7 +18,11 @@ import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-
 import { marIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service.js';
 
-defineProps<{ controls: ImagePreviewControlState; placement?: 'top' | 'bottom' }>();
+defineProps<{
+  controls: ImagePreviewControlState;
+  placement?: 'top' | 'bottom';
+  ghost?: boolean;
+}>();
 
 const directions = [
   { key: 'up', icon: 'chevron-up', x: 0, y: 1 },
@@ -35,39 +39,47 @@ const directions = [
     :aria-label="translate('imageViewport.actions')"
   >
     <MarButton
-      class="image-preview-control"
+      :class="ghost ? 'mar-icon-action' : 'image-preview-control'"
       v-tooltip="translate('imageViewport.zoomOut')"
       :aria-label="translate('imageViewport.zoomOut')"
       :icon="marIcon('zoom-out')"
       :disabled="!controls.canZoomOut"
-      circle
+      :text="ghost"
+      :circle="!ghost"
       @click="controls.zoomBy(1 / 1.5)"
     />
     <MarButton
-      class="image-preview-control"
+      :class="ghost ? 'mar-icon-action' : 'image-preview-control'"
       v-tooltip="translate('imageViewport.fit')"
       :aria-label="translate('imageViewport.fit')"
       :icon="marIcon('fit')"
       :disabled="!controls.canZoomOut"
-      circle
+      :text="ghost"
+      :circle="!ghost"
       @click="controls.fit()"
     />
     <MarButton
-      class="image-preview-control"
+      :class="ghost ? 'mar-icon-action' : 'image-preview-control'"
       v-tooltip="translate('imageViewport.zoomIn')"
       :aria-label="translate('imageViewport.zoomIn')"
       :icon="marIcon('zoom-in')"
       :disabled="!controls.canZoomIn"
-      circle
+      :text="ghost"
+      :circle="!ghost"
       @click="controls.zoomBy(1.5)"
     />
-    <MarDropdown :placement="placement ?? 'top'" :disabled="!controls.canPan">
+    <MarDropdown
+      :placement="placement ?? 'top'"
+      :disabled="!controls.canPan"
+      :popper-class="ghost ? 'mar-ui-popup--animated-exit' : ''"
+    >
       <MarButton
-        class="image-preview-control"
+        :class="ghost ? 'mar-icon-action' : 'image-preview-control'"
         v-tooltip="translate('imageViewport.pan.label')"
         :aria-label="translate('imageViewport.pan.label')"
         :icon="marIcon('pan')"
-        circle
+        :text="ghost"
+        :circle="!ghost"
       />
       <template #dropdown>
         <MarDropdownMenu :aria-label="translate('imageViewport.pan.label')">

@@ -105,6 +105,42 @@ describe('Workbench direct transport coordination', () => {
     f.coordinator.dispose();
   });
 
+  it.each([
+    { scenario: 'same generation', generation: 'generation', reconnect: false, accepted: true },
+    { scenario: 'new generation', generation: 'new-generation', reconnect: false, accepted: false },
+    { scenario: 'new control epoch', generation: 'generation', reconnect: true, accepted: false }
+  ])(
+    'fences a pending Direct probe when discovery refreshes: $scenario',
+    async ({ generation, reconnect, accepted }) => {
+      const f = fixture();
+      const probe = deferred<'DIRECT_AVAILABLE'>();
+      const path = { closed: false };
+      clients.workspace.ensureTransport.mockReturnValue(probe.promise);
+      clients.workspace.acquireTerminalTransport.mockReturnValue({
+        readyStreamPath: async () => path,
+        release: vi.fn(),
+        nodeGeneration: 'generation'
+      });
+      try {
+        f.coordinator.selectNode('one');
+        f.coordinator.connectionReady('connection', false);
+        await f.coordinator.refresh('one');
+        const connecting = f.coordinator.connectNodePath('one', new AbortController().signal);
+        const settled = accepted
+          ? expect(connecting).resolves.toMatchObject({ closed: false })
+          : expect(connecting).rejects.toThrow('NODE_DIRECT_UNAVAILABLE');
+        f.discover.mockResolvedValueOnce(manifest(generation));
+        if (reconnect) f.coordinator.connectionReady('connection', false);
+        await f.coordinator.refresh('one', !reconnect);
+        probe.resolve('DIRECT_AVAILABLE');
+        await settled;
+        expect(clients.workspace.acquireTerminalTransport).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      } finally {
+        f.coordinator.dispose();
+      }
+    }
+  );
+
   it.each(['lost', 'reset', 'dispose'] as const)(
     'rejects capability responses after %s',
     async (action) => {

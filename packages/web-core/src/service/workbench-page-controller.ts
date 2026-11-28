@@ -463,6 +463,8 @@ export function createWorkbenchPageController<
     http: workbenchHttpService.request,
     nodes: () => nodes.value,
     selectedNode: () => workspaceNodeId.value,
+    onLeaseExpired: (nodeId) => nodeConnections.expireNode(nodeId),
+    onDirectReady: (nodeId) => void nodeConnections.directReady(nodeId),
     discover: async (nodeId) =>
       (
         await request<{ readonly manifest?: NodeWorkbenchManifest }>(
@@ -475,7 +477,8 @@ export function createWorkbenchPageController<
   const { workspace: workspaceDirectTransfer } = directTransport;
   const nodeConnections = createWorkbenchNodeConnectionService({
     http: workbenchHttpService,
-    connectDirect: directTransport.connectNodePath
+    connectDirect: directTransport.connectNodePath,
+    isNodeActive: directTransport.isNodeActive
   });
   const fileStreams = createWorkspaceFileStreamClient(nodeConnections.openStream);
   const browser = createWorkbenchBrowserService({

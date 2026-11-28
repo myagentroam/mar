@@ -52,7 +52,7 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
           }
         });
         manager.onFrame((frame) => {
-          if (frame.type === 'output') output += frame.data;
+          if (frame.type === 'output') output += Buffer.from(frame.data!).toString('utf8');
         });
         try {
           const script = join(directory, 'foreground.cjs');
@@ -70,7 +70,7 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
           await manager.acceptFrame(attachment.attachmentId, {
             type: 'input',
             terminalId: terminal.id,
-            data: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}\n`
+            data: Buffer.from(`${JSON.stringify(process.execPath)} ${JSON.stringify(script)}\n`)
           });
           await expect.poll(() => output).toMatch(/JOB_PIDS \d+ \d+ \d+/u);
           const match = output.match(/JOB_PIDS (\d+) (\d+) (\d+)/u)!;

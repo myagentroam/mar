@@ -159,13 +159,12 @@ export const filePreviewZhCN = {
   gitDiffViewer: {
     mobileSummary: 'Diff 摘要',
     mobileFileSummary: '文件 {value0} / {value1}',
-    mobileChangeSummary: '差异 {value0} / {value1}',
-    collapseMobileActions: '收起 Diff 快捷操作',
-    expandMobileActions: '展开 Diff 快捷操作'
+    mobileChangeSummary: '差异 {value0} / {value1}'
   },
   filePreviewDialog: {
     closeFileWindow: '关闭文件窗口',
-    collapseMobileActions: '收起文件预览快捷操作',
-    expandMobileActions: '展开文件预览快捷操作'
+    moreActions: '更多文件操作',
+    collapseToolbar: '收起文件工具栏',
+    expandToolbar: '展开文件工具栏'
   }
 } as const;

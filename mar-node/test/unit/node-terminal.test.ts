@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { createSocket } from 'node:dgram';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import WebSocket, { WebSocketServer } from 'ws';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
@@ -26,7 +27,8 @@ import { readTerminalRecords, writeTerminalRecord } from '@myagentroam/protocol/
 import {
   createEnvelope,
   decodeTerminalMessage,
-  encodeTerminalMessage
+  encodeTerminalMessage,
+  terminalDataFrameSchema
 } from '@myagentroam/protocol';
 
 class FakePty implements TerminalPty {
@@ -776,6 +778,153 @@ describe('Node Admin Terminal', () => {
     }
   });
 
+  it.runIf(process.platform === 'linux').each(['resume', 'cancel', 'child exit'] as const)(
+    'paces a large pipe stdin transfer when the child is not reading: %s',
+    async (action) => {
+      const cwd = await mkdtemp(join(tmpdir(), 'mar-terminal-stdin-'));
+      const manager = new TerminalManager({
+        cwd,
+        profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
+      });
+      const fixture = terminalStreamFixture(manager);
+      try {
+        await writeFile(
+          join(cwd, 'slow-stdin.cjs'),
+          `const { existsSync } = require('node:fs');
+let size = 0;
+const gate = setInterval(() => {
+  if (!existsSync('read-stdin')) return;
+  clearInterval(gate);
+  if (${action === 'child exit'}) {
+    process.exitCode = 7;
+    process.stdout.write('done');
+    return;
+  }
+  process.stdin.on('data', (chunk) => {
+    if (chunk.some((byte) => byte !== 0xa5)) process.exit(2);
+    size += chunk.length;
+  });
+  process.stdin.on('end', () => process.stdout.write(String(size)));
+}, 10);
+process.stdout.write('ready');`
+        );
+        const terminal = manager.openCommand(
+          {},
+          `${JSON.stringify(process.execPath)} slow-stdin.cjs`
+        );
+        const stream = await fixture.open(terminal.id, { closeOnDisconnect: true });
+        const records = readTerminalRecords(stream);
+        expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
+          type: 'attach'
+        });
+        const ready = terminalDataFrameSchema.parse(
+          decodeTerminalMessage((await records.next()).value)
+        );
+        expect(ready.type === 'output' && Buffer.from(ready.data).toString()).toBe('ready');
+
+        const size = 6 * 1024 * 1024;
+        const chunk = Buffer.alloc(8 * 1024, 0xa5);
+        const input = writeTerminalRecord(
+          encodeTerminalMessage({ type: 'input', terminalId: terminal.id, data: chunk })
+        );
+        let settled = false;
+        const transfer = (async () => {
+          for (let offset = 0; offset < size; offset += chunk.length) await stream.write(input);
+          await stream.write(
+            writeTerminalRecord(encodeTerminalMessage({ type: 'eof', terminalId: terminal.id }))
+          );
+          await stream.endWrite();
+        })().finally(() => {
+          settled = true;
+        });
+        void transfer.catch(() => {});
+        // In-memory carriers run until the stream window is depleted, without a network delay.
+        await nextTurn();
+        expect(settled).toBe(false);
+
+        if (action === 'cancel') {
+          stream.close();
+          await expect(transfer).rejects.toThrow('NODE_STREAM_CANCELLED');
+          await vi.waitFor(() => expect(manager.get(terminal.id).state).toBe('CLOSED'));
+        } else {
+          await writeFile(join(cwd, 'read-stdin'), '');
+          await transfer;
+          const output: Uint8Array[] = [];
+          let exitCode: number | null = null;
+          for await (const record of records) {
+            const frame = terminalDataFrameSchema.parse(decodeTerminalMessage(record));
+            if (frame.type === 'output') output.push(frame.data);
+            if (frame.type === 'exit') exitCode = frame.exitCode;
+          }
+          expect(Buffer.concat(output).toString()).toBe(
+            action === 'resume' ? String(size) : 'done'
+          );
+          expect(exitCode).toBe(action === 'resume' ? 0 : 7);
+        }
+      } finally {
+        fixture.close();
+        await manager.shutdown();
+        await rm(cwd, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('preserves the terminal exit when it is closed during a pending pipe write', async () => {
+    const writing = Promise.withResolvers<void>();
+    const pendingWrite = Promise.withResolvers<void>();
+    const terminating = Promise.withResolvers<void>();
+    const write = vi.fn(() => {
+      writing.resolve();
+      return pendingWrite.promise;
+    });
+    const manager = new TerminalManager({
+      pipeFactory: (): TerminalPipe => ({
+        pid: 42,
+        kill: () => true,
+        write,
+        onData: () => {},
+        onExit: () => {}
+      }),
+      terminate: () => terminating.promise
+    });
+    const fixture = terminalStreamFixture(manager);
+    try {
+      const terminal = manager.openCommand({}, 'fixture');
+      const stream = await fixture.open(terminal.id);
+      const records = readTerminalRecords(stream);
+      expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({ type: 'attach' });
+      const input = writeTerminalRecord(
+        encodeTerminalMessage({
+          type: 'input',
+          terminalId: terminal.id,
+          data: Buffer.from('input')
+        })
+      );
+      await stream.write(input);
+      await writing.promise;
+      await stream.write(input);
+      await stream.endWrite();
+
+      const closed = manager.close(terminal.id);
+      pendingWrite.resolve();
+      await nextTurn();
+      terminating.resolve();
+      await closed;
+
+      expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
+        type: 'exit',
+        exitCode: null
+      });
+      expect((await records.next()).done).toBe(true);
+      expect(write).toHaveBeenCalledOnce();
+    } finally {
+      pendingWrite.resolve();
+      terminating.resolve();
+      fixture.close();
+      await manager.shutdown();
+    }
+  });
+
   it.runIf(process.platform === 'linux')(
     'preserves real PTY tail output and exit ordering when transport writes are pending',
     async () => {
@@ -935,7 +1084,7 @@ describe('Node Admin Terminal', () => {
           data: Buffer.from('input')
         })
       ).resolves.toBeUndefined();
-      expect(write).toHaveBeenCalledWith(Buffer.from('input'));
+      expect(write).toHaveBeenCalledWith(Buffer.from('input'), undefined);
       await expect(
         other.write(
           writeTerminalRecord(
@@ -967,7 +1116,9 @@ describe('Node Admin Terminal', () => {
         return {
           pid: 144,
           kill: () => true,
-          write: (data) => writes.push(data),
+          write: (data) => {
+            writes.push(data);
+          },
           onData: (listener) => {
             output = listener;
           },

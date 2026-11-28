@@ -1,4 +1,4 @@
-const DEFAULT_ACTIVE_TTL_MS = 30 * 60_000;
+export const WORKBENCH_NODE_RETENTION_MS = 30 * 60_000;
 
 export interface ActiveNodeTransportServiceOptions {
   readonly activate: (nodeId: string) => void;
@@ -9,7 +9,7 @@ export interface ActiveNodeTransportServiceOptions {
 
 export function createActiveNodeTransportService(options: ActiveNodeTransportServiceOptions) {
   const activeUntil = new Map<string, number>();
-  const activeTtlMs = options.activeTtlMs ?? DEFAULT_ACTIVE_TTL_MS;
+  const activeTtlMs = options.activeTtlMs ?? WORKBENCH_NODE_RETENTION_MS;
   const now = options.now ?? Date.now;
   let currentNodeId: string | undefined;
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;

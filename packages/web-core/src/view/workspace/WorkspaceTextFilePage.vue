@@ -4,6 +4,7 @@ import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import '../../styles/code-syntax-theme.css';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
@@ -358,8 +359,9 @@ function dismissFloatingPanels(event: PointerEvent): void {
   if (props.active === false) return;
   const target = event.target;
   if (!(target instanceof Element)) return;
+  // A pointer dismissal must not focus the editor before the clicked action is dispatched.
   if (!target.closest('[data-file-symbol-toggle]') && !symbolDropdown.value?.contains(target))
-    closeSymbols();
+    symbolsOpen.value = false;
   if (!navigationDropdown.value?.contains(target)) emit('dismiss-navigation', event);
 }
 
@@ -931,26 +933,16 @@ defineExpose({
     </template>
     <template #mobile-actions>
       <MarButton
-        class="file-toolbar-control"
+        class="mar-icon-action"
         v-tooltip="shortcutTooltip(translate('inlineFind.label'), contained ? [] : fileKeys.find)"
         v-if="props.kind === 'text'"
-        data-file-symbol-toggle
-        circle
+        text
         :aria-label="translate('inlineFind.label')"
         @click="openFind"
         ><MarIcon name="search"
       /></MarButton>
       <MarButton
-        class="file-toolbar-control"
-        v-tooltip="shortcutTooltip(translate('fileEditor.symbols'), fileKeys.symbols)"
-        v-if="codeEditorEnabled"
-        circle
-        :aria-label="translate('fileEditor.symbols')"
-        @click="symbolsOpen ? closeSymbols() : openSymbols()"
-        ><MarIcon name="symbols"
-      /></MarButton>
-      <MarButton
-        class="file-toolbar-control"
+        class="mar-icon-action"
         v-tooltip="
           shortcutTooltip(
             editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit'),
@@ -958,81 +950,67 @@ defineExpose({
           )
         "
         v-if="canWrite"
-        circle
+        text
         :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
         @click="editing = !editing"
         ><MarIcon name="lock" v-if="editing" /> <MarIcon name="edit" v-else
       /></MarButton>
       <MarButton
-        class="file-toolbar-control"
+        class="mar-icon-action"
         v-tooltip="shortcutTooltip(translate('common.save'), dirty && !saving ? fileKeys.save : [])"
         v-if="editing"
-        circle
+        text
         :disabled="!dirty"
         :loading="saving"
         :icon="marIcon('document-save')"
         :aria-label="translate('common.save')"
         @click="save"
       />
-      <template v-if="html">
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="
-            [
-              shortcutTooltip(translate('htmlPreview.open'), workspaceKeys.preview),
-              dirty ? translate('htmlPreview.savedVersion') : undefined
-            ]
-              .filter(Boolean)
-              .join('\n')
-          "
-          circle
-          :aria-label="translate('htmlPreview.open')"
-          @click="emit('open-html-preview')"
-          ><MarIcon name="view"
-        /></MarButton>
-      </template>
+    </template>
+    <template #mobile-menu>
+      <MarDropdownItem
+        v-if="codeEditorEnabled"
+        data-file-symbol-toggle
+        icon="symbols"
+        @click="symbolsOpen ? closeSymbols() : openSymbols()"
+      >
+        {{ translate('fileEditor.symbols') }}
+      </MarDropdownItem>
+      <MarDropdownItem v-if="html" icon="view" @click="emit('open-html-preview')">
+        {{ translate('htmlPreview.open') }}
+        <template v-if="dirty"> · {{ translate('htmlPreview.savedVersion') }} </template>
+      </MarDropdownItem>
       <template v-if="markdown && !renderMarkdown">
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="shortcutTooltip(translate('markdownPreview.open'), workspaceKeys.preview)"
-          circle
-          :aria-label="translate('markdownPreview.open')"
-          @click="emit('open-markdown-preview')"
-          ><MarIcon name="view"
-        /></MarButton>
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="translate('markdownPreview.settings')"
-          circle
-          :aria-label="translate('markdownPreview.settings')"
-          @click="openSettings"
-          ><MarIcon name="settings"
-        /></MarButton>
+        <MarDropdownItem icon="view" @click="emit('open-markdown-preview')">
+          {{ translate('markdownPreview.open') }}
+        </MarDropdownItem>
+        <MarDropdownItem icon="settings" @click="openSettings">
+          {{ translate('markdownPreview.settings') }}
+        </MarDropdownItem>
       </template>
-      <MarButton
-        class="file-toolbar-control"
-        v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
-        :loading="downloading"
-        :icon="marIcon('download')"
-        :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
-        circle
+      <MarDropdownItem
+        :icon="downloading ? 'loading-action' : 'download'"
+        :disabled="downloading"
+        :aria-busy="downloading || undefined"
         @click="emit('download')"
-      />
+      >
+        {{ translate('generated.filePreviewDialog.downloadFile') }}
+      </MarDropdownItem>
+    </template>
+    <template v-if="fullscreen" #mobile-header-actions>
       <MarButton
-        class="file-toolbar-control"
+        class="mar-icon-action"
         v-tooltip="
-          shortcutTooltip(translate('generated.filePreviewDialog.closePreview2'), [
+          shortcutTooltip(translate('generated.filePreviewDialog.closePreview'), [
             ...closeAllTabsKeys,
             ...fileKeys.dismiss
           ])
         "
-        v-if="fullscreen"
-        :aria-label="translate('generated.filePreviewDialog.closePreview2')"
-        circle
+        :aria-label="translate('generated.filePreviewDialog.closePreview')"
+        icon="close"
+        text
         @click="requestClose"
-      >
-        <MarIcon name="close" />
-      </MarButton>
+      />
     </template>
     <div
       v-if="symbolsOpen && codeEditorEnabled"

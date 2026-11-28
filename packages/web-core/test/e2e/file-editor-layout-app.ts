@@ -168,6 +168,23 @@ createApp({
     const source = query.get('diff');
     if (source === 'HISTORY' || source === 'TOOL_CHANGE' || source === 'WORKING_TREE') {
       const code = query.has('diff-code');
+      const patch =
+        code && source === 'HISTORY'
+          ? [
+              'diff --git a/example.ts b/example.ts',
+              '--- a/example.ts',
+              '+++ b/example.ts',
+              '@@ -1,5 +1,6 @@',
+              ' export function createPreview() {',
+              '   return {',
+              "-    title: 'Document',",
+              "+    title: 'File preview',",
+              "+    mode: 'read-only',",
+              '   };',
+              ' }',
+              ''
+            ].join('\n')
+          : '--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-old\n+new\n';
       const path = query.has('long-name')
         ? `/workspace/${'feature-'.repeat(20)}notes.txt`
         : code
@@ -189,10 +206,7 @@ createApp({
             afterText:
               source === 'WORKING_TREE' ? (code ? 'const preview = true;' : content) : undefined,
             text:
-              query.get('diff-state') === 'empty'
-                ? undefined
-                : '--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-old\n+new\n' +
-                  (longContent ? content : '')
+              query.get('diff-state') === 'empty' ? undefined : patch + (longContent ? content : '')
           },
           loading: false,
           loadFailed: query.has('load-failed'),
