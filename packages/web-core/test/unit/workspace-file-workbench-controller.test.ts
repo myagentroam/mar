@@ -1245,6 +1245,134 @@ it('does not reopen an old comparison after a newer file intent', async () => {
   expect(owner.tabList.value.map((tab) => tab.path)).toEqual(['new.ts']);
 });
 
+it('restarts a retained comparison after interrupted close and ignores the old result', async () => {
+  const previous = Promise.withResolvers<WorkspaceFileOpenIntent>();
+  const restarted = Promise.withResolvers<WorkspaceFileOpenIntent>();
+  const comparison = vi
+    .fn()
+    .mockReturnValueOnce(previous.promise)
+    .mockReturnValueOnce(restarted.promise);
+  const owner = createQuotePaneWorkbench(comparison);
+  const intent = {
+    kind: 'WORKTREE_DIFF' as const,
+    nodeId: 'node',
+    workspaceId: 'workspace',
+    repositoryPath: '',
+    worktreePath: '',
+    path: 'src/main.ts'
+  };
+  try {
+    const opening = owner.openComparison(intent.path, undefined, undefined, 'aside');
+    const pending = owner.pendingComparison.value!;
+    const resume = owner.prepareConfirmedTabClose([pending.tab.id]);
+    resume();
+    expect(comparison.mock.calls).toEqual([[intent.path], [intent.path]]);
+    expect(owner.pendingComparison.value?.tab).toBe(pending.tab);
+
+    previous.resolve({ ...intent, path: 'stale.ts' });
+    await opening;
+    expect(owner.pendingComparison.value?.tab).toBe(pending.tab);
+    expect(owner.tabList.value).toEqual([]);
+
+    restarted.resolve(intent);
+    await vi.waitFor(() => expect(owner.pendingComparison.value).toBeUndefined());
+    expect(owner.activeTab.value).toMatchObject({ ...intent, quotePane: 'aside' });
+  } finally {
+    owner.dispose();
+  }
+});
+
+it.each(['completed', 'superseded'] as const)(
+  'does not restore a comparison after a %s close',
+  async (outcome) => {
+    const previous = Promise.withResolvers<undefined>();
+    const replacement = Promise.withResolvers<undefined>();
+    const comparison = vi
+      .fn()
+      .mockReturnValueOnce(previous.promise)
+      .mockReturnValueOnce(replacement.promise);
+    const owner = createQuotePaneWorkbench(comparison);
+    try {
+      const opening = owner.openComparison('old.ts');
+      const id = owner.pendingComparison.value!.tab.id;
+      const resume = owner.prepareConfirmedTabClose([id]);
+      if (outcome === 'completed') owner.closeTabs([id]);
+      const newer = outcome === 'superseded' ? owner.openComparison('new.ts') : undefined;
+      const pending = owner.pendingComparison.value;
+      resume();
+      previous.resolve(undefined);
+      await opening;
+      expect(owner.pendingComparison.value).toBe(pending);
+      expect(owner.tabList.value).toEqual([]);
+      expect(comparison.mock.calls).toEqual(
+        outcome === 'completed' ? [['old.ts']] : [['old.ts'], ['new.ts']]
+      );
+      replacement.resolve(undefined);
+      await newer;
+    } finally {
+      owner.dispose();
+    }
+  }
+);
+
+it('keeps a failed comparison manually retryable after an interrupted close', async () => {
+  const comparison = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('Changes unavailable'))
+    .mockResolvedValueOnce(undefined);
+  const owner = createQuotePaneWorkbench(comparison);
+  try {
+    await owner.openComparison('src/main.ts');
+    const pending = owner.pendingComparison.value!;
+    const resume = owner.prepareConfirmedTabClose([pending.tab.id]);
+    pending.error!.retry();
+    expect(comparison).toHaveBeenCalledOnce();
+
+    resume();
+    expect(owner.pendingComparison.value).toBe(pending);
+    expect(comparison).toHaveBeenCalledOnce();
+
+    pending.error!.retry();
+    await vi.waitFor(() => expect(owner.pendingComparison.value).toBeUndefined());
+    expect(comparison).toHaveBeenCalledTimes(2);
+    expect(owner.activeTab.value?.path).toBe('src/main.ts');
+  } finally {
+    owner.dispose();
+  }
+});
+
+it('restarts a pending comparison retry after an interrupted close', async () => {
+  const retry = Promise.withResolvers<undefined>();
+  const restarted = Promise.withResolvers<undefined>();
+  const failure = new Error('Changes unavailable');
+  const comparison = vi
+    .fn()
+    .mockRejectedValueOnce(failure)
+    .mockReturnValueOnce(retry.promise)
+    .mockReturnValueOnce(restarted.promise);
+  const owner = createQuotePaneWorkbench(comparison);
+  try {
+    await owner.openComparison('src/main.ts');
+    owner.pendingComparison.value!.error!.retry();
+    const pending = owner.pendingComparison.value!;
+    expect(pending.retrying).toBe(true);
+
+    const resume = owner.prepareConfirmedTabClose([pending.tab.id]);
+    resume();
+    expect(comparison).toHaveBeenCalledTimes(3);
+    retry.reject(new Error('Stale retry failure'));
+    await retry.promise.catch(() => undefined);
+    expect(owner.pendingComparison.value).toBe(pending);
+    expect(owner.pendingComparison.value?.error?.cause).toBe(failure);
+
+    restarted.resolve(undefined);
+    await vi.waitFor(() => expect(owner.pendingComparison.value).toBeUndefined());
+    expect(owner.activeTab.value?.path).toBe('src/main.ts');
+  } finally {
+    owner.dispose();
+  }
+});
+
 it.each(['target', 'failure'] as const)(
   'ignores a late navigation %s after suspending for HTML',
   async (outcome) => {

@@ -112,7 +112,7 @@ browser.deleteDownload = async (id) => {
   });
 };
 browser.downloadTargetKey = () => 'fixture-attachment';
-browser.saveDownload = async (id) => {
+browser.saveDownload = async ({ id }) => {
   document.documentElement.dataset.savedDownload = id;
 };
 const saved = new Set<string>();

@@ -14,7 +14,10 @@ export async function uploadBrowserFiles(
   lifecycle: {
     signal: AbortSignal;
     finishing: () => void;
-    openStream: (ticket: string, signal: AbortSignal) => Promise<NodeStream>;
+    openStream: (
+      issueTicket: (signal: AbortSignal) => Promise<string>,
+      signal: AbortSignal
+    ) => Promise<NodeStream>;
   }
 ): Promise<void> {
   const send = (command: BrowserUpload['command']) => {
@@ -37,12 +40,15 @@ export async function uploadBrowserFiles(
       ...selection,
       command: { action: 'stream', transferId, index }
     };
-    const { ticket } = await request<{ ticket: string }>(
-      `/api/browser/uploads/stream-ticket?${new URLSearchParams({ connectionId })}`,
-      { method: 'POST', body: JSON.stringify(body), signal: lifecycle.signal }
-    );
+    const issueTicket = async (signal: AbortSignal) => {
+      const { ticket } = await request<{ ticket: string }>(
+        `/api/browser/uploads/stream-ticket?${new URLSearchParams({ connectionId })}`,
+        { method: 'POST', body: JSON.stringify(body), signal }
+      );
+      return ticket;
+    };
     await sendFileUploadBody(
-      await lifecycle.openStream(ticket, lifecycle.signal),
+      await lifecycle.openStream(issueTicket, lifecycle.signal),
       file,
       lifecycle.signal
     );

@@ -54,7 +54,7 @@ const tools: readonly {
     action: 'start',
     parallelSafety: 'safe',
     description:
-      'Start an Agent with a task and optional Goal; returns without waiting for completion.',
+      'Delegate a task to a direct subagent by default, or explicitly start an independent Session. Accepts an optional Goal and returns without waiting for completion.',
     properties: {
       content: text,
       runner,
@@ -68,7 +68,7 @@ const tools: readonly {
         type: 'string',
         enum: ['child', 'peer'],
         description:
-          'Defaults to child (your direct subagent). Use peer for an independent Session with no parent or automatic result collection.'
+          'Use child for task delegation (the default). Use peer only to start an independent Session, never as a fallback when child creation fails.'
       },
       goal,
       clientMessageId: text
@@ -169,22 +169,32 @@ const tools: readonly {
   }
 ];
 
+const automaticChildCollection =
+  'The parent automatically collects replies and terminal state from its direct children before its next model request.';
+
 const delegationPrompt = [
   '## Delegation and coordination',
+  `Use agent_start with relation: "child" to delegate part of the current task to a subagent. Omitting relation also creates a direct child. ${automaticChildCollection}`,
+  'Use relation: "peer" only to start an independent Session, never as a fallback when child creation fails.',
+  'For a MAR Agent child, choose an available model marked subagentModel: true. Use modelId and effort to select the model and reasoning effort at creation.',
   'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
   'Prefer following up through the direct delegate; deeper Session inspection is usually useful only when a concrete issue needs independent verification.',
   'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',
   'Verify consequential findings and changes, and retain responsibility for the final result. Before final delivery, resolve any outstanding child work required for the task. Results already available in context usually need no additional wait or view.'
 ].join('\n\n');
 
-const collaborationPrompt = [
-  '## Workspace collaboration',
-  'For direct requests and Session coordination, use native agent_* tools. Contact another Session when its context or ongoing work materially helps. Prefer focused requests and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup.',
-  'Prefer reusing known Agent IDs rather than rediscovering them. Direct updates are most useful when requested or when the recipient needs to decide or change course; prefer combining related updates.',
-  'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
-  'The parent automatically collects replies and terminal state from its direct children before its next model request. Report progress, blockers, and results in your own Session rather than using agent_send to contact your parent. Parent-to-child guidance still uses agent_send.',
-  'Sending a message to an Agent other than your direct child does not subscribe you to its Session activity. For those Agents, agent_wait observes Session activity only for the duration of the call.'
-].join('\n\n');
+function collaborationPrompt(delegationAvailable: boolean): string {
+  return [
+    '## Workspace collaboration',
+    'For direct requests and Session coordination, use native agent_* tools. Contact another Session when its context or ongoing work materially helps. Prefer focused requests and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup.',
+    'Prefer reusing known Agent IDs rather than rediscovering them. Direct updates are most useful when requested or when the recipient needs to decide or change course; prefer combining related updates.',
+    'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
+    // Keep this guidance when agent_send is available without agent_start, but state it only once.
+    ...(delegationAvailable ? [] : [automaticChildCollection]),
+    'Report progress, blockers, and results in your own Session rather than using agent_send to contact your parent. Parent-to-child guidance still uses agent_send.',
+    'Sending a message to an Agent other than your direct child does not subscribe you to its Session activity. For those Agents, agent_wait observes Session activity only for the duration of the call.'
+  ].join('\n\n');
+}
 
 const managementPrompt =
   '## Workspace management\n\nLoad marctl when needed to manage existing Session settings, titles, persistent prompts or schedules, or to discover authorized Nodes, execute remote commands or transfer files. Do not switch to marctl when a native operation fails.';
@@ -257,9 +267,9 @@ export function orchestrationExtension(
         const sections = enabled
           ? [
               delegate
-                ? `${delegationPrompt}\n\nYou can start an independent Session with agent_start and relation: "peer". Use agent_start to select a new Agent's model or effort at creation. Any listed model can run a peer. A child requires a model marked subagentModel: true.\n\nAvailable MAR Agent models for agent_start:\n${JSON.stringify({ runner: 'mar-agent', models })}`
+                ? `${delegationPrompt}\n\nAvailable MAR Agent models for agent_start:\n${JSON.stringify({ runner: 'mar-agent', models })}`
                 : null,
-              available.has('agent_send') ? collaborationPrompt : null,
+              available.has('agent_send') ? collaborationPrompt(delegate) : null,
               tools.some((tool) => available.has(`agent_${tool.action}`)) ? managementPrompt : null,
               available.has('whiteboard') ? whiteboardPrompt : null
             ].filter(Boolean)

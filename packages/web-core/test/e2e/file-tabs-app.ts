@@ -261,6 +261,16 @@ createTooltipApp({
         ),
         h(
           'button',
+          {
+            onClick: () => {
+              void fileWorkbench.openFile('background.ts');
+              void fileWorkbench.openComparison('comparison.ts', 2);
+            }
+          },
+          'Load both files'
+        ),
+        h(
+          'button',
           { onClick: () => void fileWorkbench.openComparison('.mar/temp-files/test/temp.ts') },
           'Open temporary file'
         ),

@@ -7,10 +7,15 @@ import type {
   BrowserUpload
 } from '@myagentroam/protocol';
 import { parseBrowserStreamGrant } from '@myagentroam/protocol/browser-stream';
-import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import { NodeStream } from '@myagentroam/protocol/node-stream';
 import type { OpenWorkbenchNodeStream } from '../../src/service/workbench-node-connection-service.js';
 import { createWorkbenchBrowserService } from '../../src/service/workbench-browser-service.js';
 import type { WorkbenchHttpService } from '../../src/service/workbench-http-service.js';
+import { downloadWorkspaceFileToBrowser } from '../../src/service/workspace-direct-download-stream-service.js';
+
+vi.mock('../../src/service/workspace-direct-download-stream-service.js', () => ({
+  downloadWorkspaceFileToBrowser: vi.fn()
+}));
 
 const mock = vi.hoisted(() => ({
   send: vi.fn(() => true),
@@ -410,6 +415,118 @@ it.each(['cancel', 'delete', 'workspace'] as const)(
     } finally {
       service.hide();
       service.handle({ type: 'browser.response', requestId: requests[1]!.requestId });
+    }
+  }
+);
+
+it.each(['unchanged', 'changed'] as const)(
+  'signs only after the sink and cold path are ready (download metadata %s)',
+  async (metadata) => {
+    const sinkReady = Promise.withResolvers<void>();
+    const pathReady = Promise.withResolvers<void>();
+    const preparingPath = Promise.withResolvers<void>();
+    const sink = {
+      write: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+      abort: vi.fn(async () => {})
+    };
+    const download = { id: randomUUID(), name: 'report.bin', size: 1, state: 'ready' } as const;
+    const attachmentId = randomUUID();
+    const start = Date.now();
+    let time = start;
+    let issuedAt: number | undefined;
+    const http = vi.fn(async () => {
+      issuedAt = time;
+      return {
+        ticket: 'fresh-ticket',
+        nodeId: 'node',
+        name: download.name,
+        size: metadata === 'changed' ? 2 : download.size
+      };
+    });
+    const opened = vi.fn();
+    const downloadToBrowser = vi.mocked(downloadWorkspaceFileToBrowser);
+    downloadToBrowser.mockImplementationOnce(async ({ fileName, size, download: receive }) => {
+      expect({ fileName, size }).toEqual({ fileName: download.name, size: download.size });
+      await sinkReady.promise;
+      await receive(sink);
+      return 'COMPLETED';
+    });
+    const service = createWorkbenchBrowserService({
+      connectionId: () => 'workbench',
+      http: http as WorkbenchHttpService['request'],
+      async openStream(node, request, signal) {
+        if (request.kind === 'browser-rfb') return fixtureStream()(node, request, signal);
+        if (request.kind !== 'browser-file-download') throw new Error('Unexpected stream');
+        preparingPath.resolve();
+        await pathReady.promise;
+        const ticket = await request.issueTicket(signal);
+        if (issuedAt === undefined || time - issuedAt >= 15_000) throw new Error('Ticket expired');
+        opened(ticket);
+        const stream = new NodeStream(
+          1,
+          async () => {},
+          () => {}
+        );
+        stream.receive({ type: 'DATA', streamId: 1, bytes: Uint8Array.of(42) });
+        stream.receive({ type: 'FIN', streamId: 1 });
+        return stream;
+      },
+      send({ requestId, request }) {
+        queueMicrotask(() =>
+          service.handle({
+            type: 'browser.response',
+            requestId,
+            ...(request.action === 'attach' && {
+              result: { type: 'OPEN', attachmentId, ticket: 'A'.repeat(32) }
+            })
+          })
+        );
+        return true;
+      }
+    });
+    await service.show(
+      { nodeId: 'node', workspaceId: 'workspace' },
+      { apiVersion: 1, vnc: true, ice: false, nodeGeneration: 'generation' },
+      {} as HTMLCanvasElement,
+      { action: 'resume', browserId: 'browser' },
+      {} as HTMLElement
+    );
+    mock.frame!({ viewVersion: 1, width: 800, height: 600 });
+    try {
+      const result = service.saveDownload(download).then(
+        () => undefined,
+        (error: unknown) => error
+      );
+      expect(http).not.toHaveBeenCalled();
+      time += 4_000;
+      sinkReady.resolve();
+      await preparingPath.promise;
+      expect(http).not.toHaveBeenCalled();
+      time += 12_000;
+      pathReady.resolve();
+      if (metadata === 'changed')
+        expect(await result).toMatchObject({ message: 'NODE_RESPONSE_INVALID' });
+      else expect(await result).toBeUndefined();
+      expect(issuedAt).toBe(start + 16_000);
+      expect(http).toHaveBeenCalledExactlyOnceWith(
+        '/api/browser/downloads/stream-ticket?connectionId=workbench',
+        {
+          method: 'POST',
+          body: JSON.stringify({ attachmentId, id: download.id }),
+          signal: expect.any(AbortSignal)
+        }
+      );
+      if (metadata === 'unchanged') {
+        expect(opened).toHaveBeenCalledExactlyOnceWith('fresh-ticket');
+        expect(sink.write).toHaveBeenCalledExactlyOnceWith(Uint8Array.of(42));
+        expect(sink.close).toHaveBeenCalledOnce();
+      } else {
+        expect(opened).not.toHaveBeenCalled();
+        expect(sink.abort).toHaveBeenCalledOnce();
+      }
+    } finally {
+      service.hide();
     }
   }
 );

@@ -72,8 +72,26 @@ test('Personal secret validation and CRUD reuse authoritative lists without subm
         body: { scope: 'PERSONAL', name: 'PERSONAL_KEY', value: 'personal-test-fixture' }
       }
     ]);
-  const row = page.locator('.secret-table .mar-ui-table__row').filter({ hasText: 'PERSONAL_KEY' });
+  const table = page.locator('.secret-table');
+  const row = table.locator('.mar-ui-table__row').filter({ hasText: 'PERSONAL_KEY' });
   await expect(row).toContainText('personal-test-fixture');
+  const nameHeader = table.getByRole('columnheader', { name: '环境变量名' });
+  const [sortedRead] = await Promise.all([
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === 'GET' &&
+        url.pathname === '/api/environment-secrets' &&
+        url.searchParams.get('sortBy') === 'name' &&
+        url.searchParams.get('sortOrder') === 'asc' &&
+        url.searchParams.get('page') === '1'
+      );
+    }),
+    nameHeader.getByRole('button').click()
+  ]);
+  expect(sortedRead.ok()).toBe(true);
+  await expect(nameHeader).toHaveAttribute('aria-sort', 'ascending');
+  await expect(table).toHaveAttribute('aria-busy', 'false');
   await row.getByRole('button', { name: '更新', exact: true }).click();
   const replace = page.getByRole('dialog', { name: '更新密钥值' });
   await expect(replace.getByPlaceholder('请输入环境变量名')).toBeDisabled();
@@ -466,6 +484,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       .filter({ hasText: 'PROJECT_TOKEN' });
     await expect(row).toContainText(text.scope);
     await expect(row).toContainText('workspace-a-fixture');
+    await expect(
+      details.locator('.secret-table').getByRole('columnheader').getByRole('button')
+    ).toHaveCount(0);
     await row.getByRole('button', { name: text.update, exact: true }).click();
     const replace = page.getByRole('dialog', { name: text.replace, exact: true });
     await expect(replace.getByPlaceholder(text.name)).toBeDisabled();

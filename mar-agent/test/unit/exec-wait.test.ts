@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost } from '../../src/host/local-agent-host.js';
@@ -959,6 +959,73 @@ describe('exec_wait', () => {
     await call('exec_wait', { processId, action: 'cancel' });
     await expect(call('exec_wait', { processId })).rejects.toMatchObject({
       code: 'MAR_AGENT_PROCESS_NOT_FOUND'
+    });
+  });
+
+  it('returns a stdin write error without terminating a running process', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new Writable({
+        write(_chunk, _encoding, done) {
+          done(Object.assign(new Error('Fixture input pipe failed.'), { code: 'EPIPE' }));
+        }
+      }),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null
+    });
+    const { call, startRunning } = await fixture({
+      async spawn() {
+        return child as unknown as ChildProcessWithoutNullStreams;
+      }
+    });
+    const { processId } = await startRunning('fixture');
+    const input = { processId, action: 'write', data: 'fixture input' };
+    await expect(call('exec_wait', input)).rejects.toMatchObject({
+      code: 'MAR_AGENT_PROCESS_IO_FAILED',
+      details: { reasonCode: 'EPIPE' }
+    });
+    await expect(call('exec_wait', input)).rejects.toMatchObject({
+      code: 'MAR_AGENT_PROCESS_IO_FAILED'
+    });
+    child.stdout.write('still running');
+    await expect(call('exec_wait', { processId }, pendingSteer())).resolves.toMatchObject({
+      status: 'running',
+      stdout: 'still running'
+    });
+  });
+
+  it('cancels the stdin write wait without resubmitting input or stopping the process', async () => {
+    const dispatched = Promise.withResolvers<(error?: Error) => void>();
+    const write = vi.fn((_chunk, _encoding, done) => dispatched.resolve(done));
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new Writable({ write }),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null
+    });
+    const { call, startRunning } = await fixture({
+      async spawn() {
+        return child as unknown as ChildProcessWithoutNullStreams;
+      }
+    });
+    const { processId } = await startRunning('fixture');
+    const controller = new AbortController();
+    const waiting = call(
+      'exec_wait',
+      { processId, action: 'write', data: 'fixture input' },
+      { ...context(), signal: controller.signal }
+    );
+    const done = await dispatched.promise;
+    const rejection = expect(waiting).rejects.toThrow('cancel write wait');
+    controller.abort(new Error('cancel write wait'));
+    try {
+      await rejection;
+    } finally {
+      done(new Error('Late fixture input failure.'));
+    }
+    expect(write).toHaveBeenCalledTimes(1);
+    await expect(call('exec_wait', { processId }, pendingSteer())).resolves.toMatchObject({
+      status: 'running'
     });
   });
 

@@ -207,6 +207,7 @@ async function copyRecord(id: string): Promise<void> {
         <MarBusyIndicator class="mar-read-loading-indicator" />
       </span>
     </MarRegionStatus>
+    <!-- Keep the server's newest-first share order. -->
     <MarTable
       :data="shares"
       :empty-text="translate('sessionShare.noRecords')"
@@ -236,20 +237,12 @@ async function copyRecord(id: string): Promise<void> {
           </MarLink>
         </template>
       </MarTableColumn>
-      <MarTableColumn
-        :label="translate('sessionShare.createdAt')"
-        prop="createdAt"
-        sortable
-        min-width="215"
+      <MarTableColumn :label="translate('sessionShare.createdAt')" prop="createdAt" min-width="215"
         ><template #default="{ row }">{{
           managementDateTime(row.createdAt)
         }}</template></MarTableColumn
       >
-      <MarTableColumn
-        :label="translate('sessionShare.expiresAt')"
-        prop="expiresAt"
-        sortable
-        min-width="215"
+      <MarTableColumn :label="translate('sessionShare.expiresAt')" prop="expiresAt" min-width="215"
         ><template #default="{ row }">{{
           row.expiresAt === null
             ? translate('sessionShare.permanent')

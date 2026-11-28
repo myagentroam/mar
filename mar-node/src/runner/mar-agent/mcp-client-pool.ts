@@ -24,7 +24,7 @@ import { canonicalJson } from '../../util/canonical-json.js';
 import { ExecutorStdioClientTransport } from './executor-stdio-client-transport.js';
 
 interface ToolBinding {
-  client: Client;
+  state: ServerCatalog;
   nativeName: string;
   metadata: McpCatalogTool;
 }
@@ -193,6 +193,9 @@ export const MCP_CATALOG_LIMITS = Object.freeze({
 interface ServerCatalog {
   server: ResolvedMcpServer;
   client: Client;
+  close: () => Promise<void>;
+  isAvailable: () => boolean;
+  reopen?: () => Promise<ServerCatalog>;
   sourceIdentity: string;
   retryAt: number;
   dirty: boolean;
@@ -201,9 +204,10 @@ interface ServerCatalog {
   refreshing?: Promise<void>;
 }
 
+/** Owns MCP transports and atomic server catalogs; Runs only wait for shared recovery. */
 export class MarAgentMcpClientPool {
   readonly #unknownPrincipal = randomUUID();
-  readonly #closeTransports: Array<() => Promise<void>> = [];
+  readonly #closeTransports = new Set<() => Promise<void>>();
   readonly #servers = new Map<string, ServerCatalog>();
   #tools = new Map<string, ToolBinding>();
   #snapshot: McpToolCatalog = { revision: '', servers: [], tools: [] };
@@ -267,7 +271,7 @@ export class MarAgentMcpClientPool {
     const initial = this.#initialCatalogAvailable;
     this.#initialCatalogAvailable = false;
     const refreshes = [...this.#servers.values()].flatMap((state) => {
-      const refresh = initial ? state.refreshing : this.#refresh(state);
+      const refresh = initial && state.isAvailable() ? state.refreshing : this.#refresh(state);
       return refresh === undefined ? [] : [refresh.catch(() => undefined)];
     });
     await waitForSharedMcp(Promise.all(refreshes), signal);
@@ -279,9 +283,24 @@ export class MarAgentMcpClientPool {
     signal?: AbortSignal,
     expectedTool?: McpToolCallContext['expectedTool']
   ): Promise<ToolExecutionResult> {
-    const binding = this.#tools.get(name);
+    let binding = this.#tools.get(name);
     if (!binding || this.#closed)
       throw new AgentError('MAR_AGENT_MCP_TOOL_NOT_FOUND', 'MCP tool is no longer available.');
+    signal?.throwIfAborted();
+    if (!binding.state.isAvailable()) {
+      const state = binding.state;
+      if (state.reopen) {
+        await waitForSharedMcp(
+          this.#refresh(state).catch(() => undefined),
+          signal
+        );
+        signal?.throwIfAborted();
+        binding = this.#tools.get(name);
+        if (!binding || this.#closed)
+          throw new AgentError('MAR_AGENT_MCP_TOOL_NOT_FOUND', 'MCP tool is no longer available.');
+      }
+      if (!binding.state.isAvailable()) throw mcpConnectionUnavailable();
+    }
     if (
       expectedTool &&
       (binding.metadata.sourceIdentity !== expectedTool.sourceIdentity ||
@@ -291,8 +310,8 @@ export class MarAgentMcpClientPool {
         'MAR_AGENT_MCP_TOOL_DEFINITION_CHANGED',
         'MCP tool binding or definition changed.'
       );
-    signal?.throwIfAborted();
-    const result = await binding.client.callTool(
+    // Recover only before dispatch. The old server may have acted even if its reply was lost.
+    const result = await binding.state.client.callTool(
       {
         name: binding.nativeName,
         arguments:
@@ -379,14 +398,17 @@ export class MarAgentMcpClientPool {
     await Promise.allSettled(
       [...this.#servers.values()].flatMap((state) => (state.refreshing ? [state.refreshing] : []))
     );
-    await Promise.all(this.#closeTransports.map((close) => close().catch(() => undefined)));
-    this.#closeTransports.length = 0;
+    await Promise.all([...this.#closeTransports].map((close) => close().catch(() => undefined)));
     this.#servers.clear();
     this.#tools.clear();
     this.#snapshot = { revision: '', servers: [], tools: [] };
   }
 
-  #publish(replacement?: { state: ServerCatalog; tools: Map<string, ToolBinding> }) {
+  #publish(replacement?: {
+    state: ServerCatalog;
+    tools: Map<string, ToolBinding>;
+    recovered?: ServerCatalog;
+  }) {
     const combined = new Map<string, ToolBinding>();
     for (const state of this.#servers.values())
       for (const [name, binding] of replacement?.state === state
@@ -399,11 +421,16 @@ export class MarAgentMcpClientPool {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, binding]) => binding.metadata);
     const servers = [...this.#servers.values()]
-      .map((state) => state.metadata)
+      .map(
+        (state) =>
+          (replacement?.state === state ? (replacement.recovered ?? state) : state).metadata
+      )
       .sort((a, b) => a.id.localeCompare(b.id));
     const revision = fingerprint({ servers, tools });
     assertMcpToolCatalog({ revision, servers, tools });
-    if (replacement) replacement.state.tools = replacement.tools;
+    if (replacement?.recovered) {
+      this.#servers.set(replacement.state.metadata.id, replacement.recovered);
+    } else if (replacement) replacement.state.tools = replacement.tools;
     this.#tools = combined;
     if (revision !== this.#snapshot.revision) this.#snapshot = { revision, servers, tools };
   }
@@ -412,13 +439,41 @@ export class MarAgentMcpClientPool {
     if (state.refreshing) return state.refreshing;
     if (this.#closed || Date.now() < state.retryAt) return Promise.resolve();
     const job = (async () => {
-      do {
-        state.dirty = false;
-        const tools = await this.#enumerate(state);
+      if (state.isAvailable()) {
+        try {
+          do {
+            // Yield the slot after each sweep so noisy servers cannot starve queued recovery.
+            const tools = await this.#withRefreshSlot(state, () => {
+              state.dirty = false;
+              return this.#enumerate(state);
+            });
+            if (this.#closed) return;
+            if (!state.isAvailable()) throw mcpConnectionUnavailable();
+            this.#publish({ state, tools });
+            state.retryAt = 0;
+          } while (state.dirty);
+          return;
+        } catch (error) {
+          // A catalog error alone does not invalidate the connection.
+          if (state.isAvailable() || !state.reopen) throw error;
+        }
+      }
+      const reopen = state.reopen;
+      if (this.#closed || !reopen) return;
+      await this.#withRefreshSlot(state, async () => {
         if (this.#closed) return;
-        this.#publish({ state, tools });
-        state.retryAt = 0;
-      } while (state.dirty && !this.#closed);
+        await state.close().catch(() => undefined);
+        const recovered = await reopen();
+        try {
+          if (this.#closed) return;
+          if (!recovered.isAvailable()) throw mcpConnectionUnavailable();
+          this.#publish({ state, tools: recovered.tools, recovered });
+          if (recovered.dirty) void this.#refresh(recovered).catch(() => undefined);
+        } finally {
+          if (this.#servers.get(state.metadata.id) !== recovered)
+            void recovered.close().catch(() => undefined);
+        }
+      });
     })()
       .catch((error: unknown) => {
         state.retryAt = Date.now() + MCP_CATALOG_LIMITS.retryMs;
@@ -431,24 +486,21 @@ export class MarAgentMcpClientPool {
     return job;
   }
 
-  async #enumerate(
-    state: ServerCatalog,
-    signal = this.#controller.signal
-  ): Promise<Map<string, ToolBinding>> {
-    if (state.server.transport !== 'HTTP') return this.#enumeratePages(state, signal);
+  async #withRefreshSlot<T>(state: ServerCatalog, refresh: () => Promise<T>): Promise<T> {
+    if (state.server.transport !== 'HTTP') return refresh();
     if (this.#httpRefreshActive < MCP_CATALOG_LIMITS.httpConcurrency) this.#httpRefreshActive++;
     else await new Promise<void>((resolve) => this.#httpWaiters.push(resolve));
     try {
-      return await this.#enumeratePages(state, signal);
+      return await refresh();
     } finally {
       const next = this.#httpWaiters.shift();
       if (next) next();
       else this.#httpRefreshActive--;
     }
   }
-  async #enumeratePages(
+  async #enumerate(
     state: ServerCatalog,
-    signal: AbortSignal
+    signal = this.#controller.signal
   ): Promise<Map<string, ToolBinding>> {
     const tools = new Map<string, ToolBinding>();
     const cursors = new Set<string>();
@@ -456,6 +508,7 @@ export class MarAgentMcpClientPool {
     let bytes = 0;
     for (let page = 0; page < MCP_CATALOG_LIMITS.maximumPages; page++) {
       signal.throwIfAborted();
+      if (!state.isAvailable()) throw mcpConnectionUnavailable();
       const listed = await state.client.listTools(cursor === undefined ? {} : { cursor }, {
         signal,
         timeout: MCP_CATALOG_LIMITS.timeoutMs
@@ -489,7 +542,7 @@ export class MarAgentMcpClientPool {
           ...(tool.annotations ? { annotations: tool.annotations } : {})
         };
         tools.set(name, {
-          client: state.client,
+          state,
           nativeName: tool.name,
           metadata
         });
@@ -510,19 +563,64 @@ export class MarAgentMcpClientPool {
     options: MarAgentMcpProcessOptions,
     signal: AbortSignal
   ) {
+    const sourceIdentity = fingerprint({
+      source: server.sourceIdentity ?? {
+        name: server.name,
+        transport: server.transport,
+        url: server.url,
+        command: server.command,
+        args: server.args
+      },
+      cwd,
+      allowedToolCallers: server.allowedToolCallers,
+      authorizationScope: options.authorizationScope ?? cwd,
+      principal: server.authorizationIdentity ?? this.#unknownPrincipal
+    });
+    const environment = { ...getDefaultEnvironment(), ...(server.environment ?? {}) };
+    const open = (signal: AbortSignal) =>
+      this.#open(server, cwd, options, sourceIdentity, environment, signal);
+    const state = await open(signal);
+    if (this.#servers.has(sourceIdentity)) throw new Error('MAR_AGENT_MCP_SERVER_NAME_CONFLICT');
+    // Execution capabilities and sandboxed processes belong to the original Run only.
+    if (server.lifecycle !== 'EXECUTION' && options.processExecutor === undefined) {
+      const reopen = async () => {
+        const recovered = await open(this.#controller.signal);
+        recovered.reopen = reopen;
+        return recovered;
+      };
+      state.reopen = reopen;
+    }
+    this.#servers.set(sourceIdentity, state);
+  }
+
+  async #open(
+    server: ResolvedMcpServer,
+    cwd: string,
+    options: MarAgentMcpProcessOptions,
+    sourceIdentity: string,
+    environment: Record<string, string>,
+    signal: AbortSignal
+  ): Promise<ServerCatalog> {
     signal.throwIfAborted();
     const client = new Client(NODE_MCP_CLIENT_INFO);
     let state: ServerCatalog | undefined;
     let initialDirty = false;
+    let invalidated = false;
+    const invalidate = () => {
+      if (invalidated) return;
+      invalidated = true;
+      if (state && this.#servers.get(sourceIdentity) === state) state.retryAt = 0;
+    };
+    client.onclose = invalidate;
     client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
       if (!state) {
         initialDirty = true;
         return;
       }
       state.dirty = true;
-      if (this.#ready) void this.#refresh(state).catch(() => undefined);
+      if (this.#ready && this.#servers.get(sourceIdentity) === state && state.isAvailable())
+        void this.#refresh(state).catch(() => undefined);
     });
-    const environment = { ...getDefaultEnvironment(), ...(server.environment ?? {}) };
     let initializing = true;
     const transport =
       server.transport === 'STDIO'
@@ -547,61 +645,63 @@ export class MarAgentMcpClientPool {
             requestInit: { headers: { ...(server.headers ?? {}) } },
             // The initialization notification has no SDK request options. Its HTTP I/O
             // follows the same lifetime as the handshake, not a single shared waiter.
-            ...(options.signal === undefined
-              ? {}
-              : {
-                  fetch: (input, init) =>
-                    initializing
-                      ? fetch(input, {
-                          ...init,
-                          signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal
-                        })
-                      : fetch(input, init)
-                })
+            fetch: async (input, init) => {
+              const response = await (initializing
+                ? fetch(input, {
+                    ...init,
+                    signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal
+                  })
+                : fetch(input, init));
+              // A session-bound 404 ends the HTTP session without an SDK onclose.
+              // Leave response handling to the SDK; retire the transport on next use.
+              if (response.status === 404 && new Headers(init?.headers).has('Mcp-Session-Id'))
+                invalidate();
+              return response;
+            }
           }) as unknown as Transport);
     // Client.connect starts its own close on handshake failure without awaiting it.
     // Pool teardown must join that same transport cleanup before releasing the Run.
     const close = transport.close.bind(transport);
     let closing: Promise<void> | undefined;
-    transport.close = () => (closing ??= close());
-    this.#closeTransports.push(transport.close);
+    const closeTransport = () =>
+      (closing ??= close().finally(() => this.#closeTransports.delete(closeTransport)));
+    transport.close = closeTransport;
+    this.#closeTransports.add(closeTransport);
     try {
-      await client.connect(transport, { signal, timeout: MCP_CATALOG_LIMITS.timeoutMs });
-    } finally {
-      initializing = false;
-    }
-    const sourceIdentity = fingerprint({
-      source: server.sourceIdentity ?? {
-        name: server.name,
-        transport: server.transport,
-        url: server.url,
-        command: server.command,
-        args: server.args
-      },
-      cwd,
-      allowedToolCallers: server.allowedToolCallers,
-      authorizationScope: options.authorizationScope ?? cwd,
-      principal: server.authorizationIdentity ?? this.#unknownPrincipal
-    });
-    const version = client.getServerVersion();
-    state = {
-      server,
-      client,
-      sourceIdentity,
-      retryAt: 0,
-      dirty: initialDirty,
-      tools: new Map(),
-      metadata: {
-        id: sourceIdentity,
-        name: server.name,
-        ...(version?.title ? { description: version.title } : {}),
-        ...(client.getInstructions() ? { instructions: client.getInstructions()! } : {})
+      try {
+        await client.connect(transport, { signal, timeout: MCP_CATALOG_LIMITS.timeoutMs });
+      } finally {
+        initializing = false;
       }
-    };
-    state.tools = await this.#enumerate(state, signal);
-    if (this.#servers.has(state.metadata.id)) throw new Error('MAR_AGENT_MCP_SERVER_NAME_CONFLICT');
-    this.#servers.set(state.metadata.id, state);
+      const version = client.getServerVersion();
+      state = {
+        server,
+        client,
+        close: closeTransport,
+        isAvailable: () => !invalidated,
+        sourceIdentity,
+        retryAt: 0,
+        dirty: initialDirty,
+        tools: new Map(),
+        metadata: {
+          id: sourceIdentity,
+          name: server.name,
+          ...(version?.title ? { description: version.title } : {}),
+          ...(client.getInstructions() ? { instructions: client.getInstructions()! } : {})
+        }
+      };
+      state.tools = await this.#enumerate(state, signal);
+      if (!state.isAvailable()) throw mcpConnectionUnavailable();
+      return state;
+    } catch (error) {
+      void closeTransport().catch(() => undefined);
+      throw error;
+    }
   }
+}
+
+function mcpConnectionUnavailable(): AgentError {
+  return new AgentError('MAR_AGENT_MCP_CONNECTION_UNAVAILABLE', 'MCP connection is unavailable.');
 }
 
 // The cache/pool owns shared initialization and refresh. A Run can cancel its wait,

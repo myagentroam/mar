@@ -30,7 +30,7 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
       Options['workbench'],
       'ownsActiveConnection' | 'sendDirectConnection'
     > as Options['workbench'],
-    direct: {} as Options['direct'],
+    direct: { authorizedTransport: () => undefined } as Options['direct'],
     request,
     authorize: () => allowed,
     capability: () => ({ apiVersion: 1, ice: false, nodeGeneration: 'generation' }),
@@ -118,6 +118,41 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
     const wrongFile = await download();
     expect(wrongFile.statusCode).toBe(502);
     expect(wrongFile.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+    request.mockResolvedValueOnce(info);
+    const { ticket: directTicket } = (await download()).json();
+    const prepared = await app.inject({
+      method: 'POST',
+      url: '/api/browser/direct-file-streams',
+      headers: {
+        origin,
+        cookie: `${SESSION_COOKIE_NAME}=fixture-session`,
+        'x-csrf-token': 'fixture-csrf'
+      },
+      payload: {
+        kind: 'browser-file-download',
+        ticket: directTicket,
+        nodeId: scope.nodeId,
+        transportId: randomUUID()
+      }
+    });
+    expect(prepared.statusCode).toBe(409);
+    expect(prepared.json()).toMatchObject({ error: { code: 'BROWSER_ICE_UNAVAILABLE' } });
+    expect(request).toHaveBeenLastCalledWith(
+      scope.nodeId,
+      'download',
+      'generation',
+      { attachmentId: payload.attachmentId, command: { action: 'info', id } },
+      owner
+    ); // Path unavailability is reported before asking the Node for a file grant.
+    await expect(
+      service.authorizeFileStream(
+        'browser-file-download',
+        directTicket,
+        scope.nodeId,
+        owner,
+        new AbortController().signal
+      )
+    ).resolves.toBeUndefined();
     const grant = randomUUID();
     request.mockResolvedValueOnce(info).mockResolvedValueOnce({ grant });
     const responseTicket = await download();

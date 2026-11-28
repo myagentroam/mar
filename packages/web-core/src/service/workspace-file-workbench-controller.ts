@@ -54,6 +54,12 @@ export interface WorkspaceFilePreviewFrame extends ReturnType<
   readonly navigationNotice: Readonly<Ref<WorkspaceNavigationNotice | undefined>>;
 }
 
+export interface WorkspaceFilePendingComparison {
+  readonly tab: WorkspaceFileTab;
+  readonly error?: { readonly cause: unknown; readonly retry: () => void };
+  readonly retrying?: boolean;
+}
+
 export function createWorkspaceFileWorkbenchController(options: {
   readonly page: () => WorkspaceFilePagePort | undefined;
   readonly access: Parameters<typeof createWorkspaceFilePreviewService>[0]['access'];
@@ -183,11 +189,11 @@ export function createWorkspaceFileWorkbenchController(options: {
   const suspended = ref(false);
   const drafts = new Map<string, DirtyTextDraft>();
   // The unresolved comparison is a presentation-only tab, never a file or history entry.
-  const pendingComparison = shallowRef<{
-    readonly tab: WorkspaceFileTab;
-    readonly error?: { readonly cause: unknown; readonly retry: () => void };
-    readonly retrying?: boolean;
-  }>();
+  const pendingComparison = shallowRef<
+    WorkspaceFilePendingComparison & {
+      readonly resume: (closeGeneration: number, restart: boolean) => void;
+    }
+  >();
   let openGeneration = 0;
   let restoreGeneration = 0;
   let restorationPending = false;
@@ -675,7 +681,7 @@ export function createWorkspaceFileWorkbenchController(options: {
     quotePane: 'main' | 'aside' = 'main'
   ): Promise<void> {
     if (needsReadablePreviewCheck(path)) return openFile(path, line, column, quotePane);
-    const generation = beginOpen();
+    let activeGeneration = beginOpen();
     const target = options.target();
     if (target === undefined) return;
     const tab: WorkspaceFileTab = {
@@ -688,7 +694,7 @@ export function createWorkspaceFileWorkbenchController(options: {
       repositoryPath: '',
       worktreePath: ''
     };
-    const current = () => {
+    const current = (generation: number) => {
       const active = options.target();
       return (
         isOpenCurrent(generation) &&
@@ -696,29 +702,37 @@ export function createWorkspaceFileWorkbenchController(options: {
         active.workspaceId === target.workspaceId
       );
     };
+    const comparison = {
+      tab,
+      resume(closeGeneration: number, restart: boolean) {
+        if (!current(closeGeneration)) return;
+        activeGeneration = ++openGeneration;
+        if (restart) void resolveComparison(activeGeneration);
+      }
+    };
     setSuspended(false);
-    pendingComparison.value = { tab };
-    async function resolveComparison(): Promise<void> {
+    pendingComparison.value = comparison;
+    async function resolveComparison(generation: number): Promise<void> {
       try {
         const intent = await options.comparison(path);
-        if (!current()) return;
+        if (!current(generation)) return;
         if (intent !== undefined) await openTab({ ...intent, quotePane }, true);
         else await openFile(path, line, column, quotePane, true);
       } catch (cause) {
-        if (!current() || pendingComparison.value?.tab !== tab) return;
+        if (!current(generation) || pendingComparison.value?.tab !== tab) return;
         const error = {
           cause,
           retry: () => {
             const pending = pendingComparison.value;
-            if (!current() || pending?.error !== error || pending.retrying) return;
+            if (!current(activeGeneration) || pending?.error !== error || pending.retrying) return;
             pendingComparison.value = { ...pending, retrying: true };
-            void resolveComparison();
+            void resolveComparison(activeGeneration);
           }
         };
-        pendingComparison.value = { tab, error };
+        pendingComparison.value = { ...comparison, error };
       }
     }
-    await resolveComparison();
+    await resolveComparison(activeGeneration);
   }
   async function openStandalone(intent: StandaloneFileOpenIntent): Promise<void> {
     if (intent.tab !== undefined) return openTab(intent.tab);
@@ -831,12 +845,22 @@ export function createWorkspaceFileWorkbenchController(options: {
     }
   }
   function prepareConfirmedTabClose(ids: readonly number[]): () => void {
-    // Keep the visible shell until its leave animation finishes, but reject the
-    // in-flight result as soon as closing has passed any unsaved-file guard.
-    if (pendingComparison.value && ids.includes(pendingComparison.value.tab.id))
-      openGeneration += 1;
+    const pending = pendingComparison.value;
+    let resumeComparison: (() => void) | undefined;
+    if (pending && ids.includes(pending.tab.id)) {
+      // Keep the shell for the leave animation, but never revive the old result.
+      // Only the retained comparison can resume or accept a retry after interruption.
+      const closeGeneration = ++openGeneration;
+      resumeComparison = () => {
+        if (pendingComparison.value === pending)
+          pending.resume(closeGeneration, pending.error === undefined || pending.retrying === true);
+      };
+    }
     const resume = ids.map((id) => previews.suspendPrivateRead(id));
-    return () => resume.forEach((restore) => restore?.());
+    return () => {
+      resume.forEach((restore) => restore?.());
+      resumeComparison?.();
+    };
   }
   function reset(): void {
     invalidateTarget();
@@ -995,7 +1019,8 @@ export function createWorkspaceFileWorkbenchController(options: {
     standalone,
     setPage,
     tabList: tabs.tabs,
-    pendingComparison: shallowReadonly(pendingComparison),
+    pendingComparison:
+      shallowReadonly<Ref<WorkspaceFilePendingComparison | undefined>>(pendingComparison),
     activeTabId: tabs.activeTabId,
     activeTab: tabs.activeTab,
     activateTab,

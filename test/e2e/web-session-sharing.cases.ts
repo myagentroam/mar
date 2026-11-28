@@ -480,6 +480,7 @@ for (const labels of [
     await expect(dialog.locator('.share-text')).toHaveText(shareText);
     const recordLink = dialog.getByRole('link', { name: shareUrl, exact: true });
     await expect(recordLink).toHaveAttribute('href', shareUrl);
+    await expect(dialog.getByRole('columnheader').getByRole('button')).toHaveCount(0);
     const expectedCreated = await page.evaluate((value) => {
       const date = new Date(value);
       return new Date(value - date.getTimezoneOffset() * 60_000)

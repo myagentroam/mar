@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { LocalAgentHost } from '../../../mar-agent/src/host.js';
 import type { LocalProcessSpawnRequest } from '../../../mar-agent/src/host.js';
 import { directLocalProcessExecutor } from '../../../mar-agent/src/host/local-process-executor.js';
@@ -19,6 +21,7 @@ import type {
 } from '../../../mar-agent/src/model/contracts.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  MCP_CATALOG_LIMITS,
   MarAgentMcpClientCache,
   MarAgentMcpClientPool
 } from '../../src/runner/mar-agent/mcp-client-pool.js';
@@ -636,6 +639,99 @@ describe('MAR Agent MCP client pool', () => {
       expect(rejection).not.toMatchObject({ code: 'MAR_AGENT_MCP_TOOL_FAILED' });
     } finally {
       await pool.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['Execution refresh', 'tool dispatch'] as const)(
+    'recovers only the closed shared transport at the next %s without replaying its failed call',
+    async (boundary) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-mcp-reconnect-'));
+      const start = vi.spyOn(StdioClientTransport.prototype, 'start');
+      const cache = new MarAgentMcpClientCache();
+      const servers = [server(), { ...server(), name: 'healthy server' }];
+      try {
+        const first = await cache.acquire(servers, home);
+        const second = await cache.acquire(servers, home);
+        expect(second.pool).toBe(first.pool);
+        const catalog = first.pool.catalog();
+        const binding = catalog.tools.find(
+          (tool) => tool.definition.name === 'mcp__test_server__echo'
+        )!;
+        const call = (value: string, pool = first.pool) =>
+          pool.call(binding.definition.name, { value }, undefined, binding);
+        await expect(call('disconnect')).rejects.toThrow('Connection closed');
+        expect(start).toHaveBeenCalledTimes(2);
+
+        if (boundary === 'Execution refresh') {
+          await Promise.all([first.pool.refreshForExecution(), second.pool.refreshForExecution()]);
+          expect(start).toHaveBeenCalledTimes(3);
+        }
+        await expect(Promise.all([call('first'), call('second', second.pool)])).resolves.toEqual([
+          { content: '{"value":"first"}' },
+          { content: '{"value":"second"}' }
+        ]);
+        expect(start).toHaveBeenCalledTimes(3);
+        expect(first.pool.catalog()).toEqual(catalog);
+        await expect(
+          first.pool.call('mcp__healthy_server__echo', { value: 'ok' })
+        ).resolves.toEqual({
+          content: '{"value":"ok"}'
+        });
+        await Promise.all([first.release(), second.release()]);
+      } finally {
+        await cache.close();
+        start.mockRestore();
+        await rm(home, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('keeps the last good catalog during reconnect backoff and rejects stale definitions after recovery', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-mcp-reconnect-backoff-'));
+    const start = vi.spyOn(StdioClientTransport.prototype, 'start');
+    const originalList = Client.prototype.listTools;
+    const list = vi.spyOn(Client.prototype, 'listTools');
+    const now = Date.now;
+    const clock = vi.spyOn(Date, 'now');
+    let pool: MarAgentMcpClientPool | undefined;
+    try {
+      pool = await MarAgentMcpClientPool.connect([server()], home);
+      const catalog = pool.catalog();
+      const binding = catalog.tools[0]!;
+      const call = (value: string, expectedTool = binding) =>
+        pool!.call(binding.definition.name, { value }, undefined, expectedTool);
+      await expect(call('disconnect')).rejects.toThrow('Connection closed');
+
+      list.mockRejectedValueOnce(new Error('Fixture catalog unavailable.'));
+      await pool.refreshForExecution();
+      expect(pool.catalog()).toBe(catalog);
+      await expect(call('unavailable')).rejects.toMatchObject({
+        code: 'MAR_AGENT_MCP_CONNECTION_UNAVAILABLE'
+      });
+      expect(start).toHaveBeenCalledTimes(2);
+
+      clock.mockImplementation(() => now() + MCP_CATALOG_LIMITS.retryMs);
+      list.mockImplementationOnce(async function (this: Client, ...args) {
+        const result = await originalList.apply(this, args);
+        return {
+          ...result,
+          tools: result.tools.map((tool) => ({ ...tool, description: 'Updated.' }))
+        };
+      });
+      await expect(call('stale')).rejects.toMatchObject({
+        code: 'MAR_AGENT_MCP_TOOL_DEFINITION_CHANGED'
+      });
+      expect(start).toHaveBeenCalledTimes(3);
+      const updated = pool.catalog().tools[0]!;
+      expect(updated.sourceIdentity).toBe(binding.sourceIdentity);
+      expect(updated.definitionRevision).not.toBe(binding.definitionRevision);
+      await expect(call('current', updated)).resolves.toEqual({ content: '{"value":"current"}' });
+    } finally {
+      await pool?.close();
+      start.mockRestore();
+      list.mockRestore();
+      clock.mockRestore();
       await rm(home, { recursive: true, force: true });
     }
   });

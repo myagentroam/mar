@@ -204,8 +204,12 @@ it.each([false, true])(
       expect(instructions).toContain(
         [
           '# Delegation and coordination',
-          'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.'
+          'Use agent_start with relation: "child" to delegate part of the current task to a subagent. Omitting relation also creates a direct child. The parent automatically collects replies and terminal state from its direct children before its next model request.',
+          'Use relation: "peer" only to start an independent Session, never as a fallback when child creation fails.'
         ].join('\n\n')
+      );
+      expect(instructions).toContain(
+        'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.'
       );
       expect(instructions).not.toContain(
         'Prefer handling focused or tightly coupled work locally.'
@@ -262,16 +266,18 @@ it.each([false, true])(
       );
       expect(instructions).not.toContain('Join or stop task-required child work');
       expect(instructions).toContain(
-        "Use agent_start to select a new Agent's model or effort at creation."
+        'Use modelId and effort to select the model and reasoning effort at creation.'
       );
       expect(instructions).toContain('Do not switch to marctl when a native operation fails.');
       expect(instructions).not.toContain('existing authorized Sessions');
       expect(instructions).not.toContain('never inside code_exec');
-      expect(JSON.stringify(request.tools)).toContain(
-        'Model configuration ID; omit to use the target Runner default.'
-      );
-      expect(JSON.stringify(request.tools)).not.toContain('REPLACE_CURRENT');
-      expect(JSON.stringify(request.tools)).not.toContain('deliveryIntent');
+      const tools = JSON.stringify(request.tools);
+      expect(tools).toContain('Delegate a task to a direct subagent by default');
+      expect(tools).toContain('Use child for task delegation (the default).');
+      expect(tools).toContain('never as a fallback when child creation fails.');
+      expect(tools).toContain('Model configuration ID; omit to use the target Runner default.');
+      expect(tools).not.toContain('REPLACE_CURRENT');
+      expect(tools).not.toContain('deliveryIntent');
     }
     expect(test.invoke).not.toHaveBeenCalled();
   }
@@ -294,15 +300,22 @@ it('selects delegation and lateral guidance independently and omits both during 
       instructions.includes('# Workspace management')
     ]).toEqual(expected);
     expect(instructions.includes('Available MAR Agent models for agent_start:')).toBe(expected[0]);
-    expect(instructions.includes('with agent_start and relation: "peer"')).toBe(expected[0]);
-    expect(instructions.includes("Use agent_start to select a new Agent's model or effort")).toBe(
-      expected[0]
-    );
+    for (const guidance of [
+      'Use agent_start with relation: "child"',
+      'Use relation: "peer" only to start an independent Session',
+      'Use modelId and effort to select the model and reasoning effort at creation.'
+    ]) {
+      expect(instructions.split(guidance)).toHaveLength(expected[0] ? 2 : 1);
+    }
+    expect(
+      instructions.split(
+        'The parent automatically collects replies and terminal state from its direct children before its next model request.'
+      )
+    ).toHaveLength(expected[0] || expected[1] ? 2 : 1);
     for (const guidance of [
       'An accepted message normally needs no separate acknowledgment.',
       'Requests for receipt-only replies',
       'immediate agent_view calls solely to confirm receipt are usually unnecessary',
-      'The parent automatically collects replies and terminal state from its direct children before its next model request.',
       'Report progress, blockers, and results in your own Session rather than using agent_send to contact your parent.',
       'Parent-to-child guidance still uses agent_send.',
       'Sending a message to an Agent other than your direct child does not subscribe you to its Session activity.'
@@ -337,7 +350,9 @@ it.each([false, true])(
     const text = composed.sections.find(
       (section) => section.id === 'mar.node.orchestration'
     )!.text!;
-    expect(text).toContain('A child requires a model marked subagentModel: true.');
+    expect(text).toContain(
+      'For a MAR Agent child, choose an available model marked subagentModel: true.'
+    );
     expect(
       JSON.parse(text.split('Available MAR Agent models for agent_start:\n')[1]!.split('\n')[0]!)
     ).toEqual({

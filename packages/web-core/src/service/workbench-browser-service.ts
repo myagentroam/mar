@@ -7,6 +7,7 @@ import {
   type BrowserContextOptions,
   type BrowserControlRequest,
   type BrowserControlResponse,
+  type BrowserDownloadInfo,
   type BrowserFindOperation,
   type BrowserFindResult,
   type BrowserProfileCommand,
@@ -513,11 +514,11 @@ export function createWorkbenchBrowserService(options: {
     try {
       await uploadBrowserFiles(options.http, connectionId, { attachmentId, chooserId }, files, {
         signal: controller.signal,
-        openStream: (ticket, signal) => {
+        openStream: (issueTicket, signal) => {
           if (!options.openStream) throw new Error('NODE_CONNECTION_UNAVAILABLE');
           return options.openStream(
             connection.scope.nodeId,
-            { kind: 'browser-file-upload', ticket },
+            { kind: 'browser-file-upload', issueTicket },
             signal
           );
         },
@@ -588,27 +589,29 @@ export function createWorkbenchBrowserService(options: {
     if (target) return `${target.connectionId}:${target.attachmentId}`;
   }
 
-  async function saveDownload(id: string): Promise<void> {
+  async function saveDownload({ id, name, size, state }: BrowserDownloadInfo): Promise<void> {
     const target = downloadTarget();
     const nodeId = current?.scope.nodeId;
     const { http, openStream, activeDownloadWorker } = options;
     if (!target || !nodeId || !http || !openStream) throw new Error('BROWSER_LEASE_ENDED');
+    if (state !== 'ready' || size === undefined) throw new Error('BROWSER_DOWNLOAD_NOT_READY');
     const { connectionId, attachmentId } = target;
-    const {
-      ticket,
-      name,
-      size,
-      nodeId: grantedNode
-    } = await http<{
-      ticket: string;
-      name: string;
-      size: number;
-      nodeId: string;
-    }>(`/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`, {
-      method: 'POST',
-      body: JSON.stringify({ attachmentId, id })
-    });
-    if (grantedNode !== nodeId) throw new Error('NODE_RESPONSE_INVALID');
+    const url = `/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`;
+    // Use the list metadata for the sink; start the ticket lifetime only when a path can use it.
+    const issueTicket = async (signal: AbortSignal) => {
+      signal.throwIfAborted();
+      const grant = await http<{ ticket: string; name: string; size: number; nodeId: string }>(
+        url,
+        {
+          method: 'POST',
+          body: JSON.stringify({ attachmentId, id }),
+          signal
+        }
+      );
+      if (grant.nodeId !== nodeId || grant.name !== name || grant.size !== size)
+        throw new Error('NODE_RESPONSE_INVALID');
+      return grant.ticket;
+    };
     // The Server binds admission to the live Browser instance; hiding its picture does not stop an admitted save.
     await downloadWorkspaceFileToBrowser({
       fileName: name,
@@ -616,7 +619,7 @@ export function createWorkbenchBrowserService(options: {
       ...(activeDownloadWorker === undefined ? {} : { activeWorker: activeDownloadWorker }),
       download: (sink, cancellation = new AbortController().signal) =>
         receiveFileDownloadBody(
-          () => openStream(nodeId, { kind: 'browser-file-download', ticket }, cancellation),
+          () => openStream(nodeId, { kind: 'browser-file-download', issueTicket }, cancellation),
           sink,
           size,
           cancellation
