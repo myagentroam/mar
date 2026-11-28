@@ -112,6 +112,7 @@ export interface WorkspaceDirectTransferServiceOptions {
   readonly randomId?: () => string;
   readonly probeTimeoutMs?: number;
   readonly onProbeResultChange?: () => void;
+  readonly onTransportReady?: (nodeId: string) => void;
   readonly shouldRetryProbe?: (nodeId: string, nodeGeneration: string) => boolean;
   readonly probeRetryDelaysMs?: readonly number[];
 }
@@ -564,15 +565,17 @@ export function createWorkspaceDirectTransferService(
 
   function finishTransportIfReady(transport: TransportSession): void {
     if (!transportReady(transport)) return;
-    clearTimeout(transport.request.timer);
-    transportRequests.delete(transport.request.requestId);
-    clearRetry(transport.request.nodeId);
-    // Keep the bootstrap channel owned by the transport until transport teardown.
-    transport.heartbeat ??= setInterval(() => {
-      if (!options.send({ type: 'direct.heartbeat', directSessionId: transport.directSessionId }))
-        closeTransport(transport, 'DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
-    }, HEARTBEAT_MS);
-    transport.request.resolve('DIRECT_AVAILABLE');
+    if (transportRequests.delete(transport.request.requestId)) {
+      clearTimeout(transport.request.timer);
+      clearRetry(transport.request.nodeId);
+      // Keep the bootstrap channel owned by the transport until transport teardown.
+      transport.heartbeat = setInterval(() => {
+        if (!options.send({ type: 'direct.heartbeat', directSessionId: transport.directSessionId }))
+          closeTransport(transport, 'DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
+      }, HEARTBEAT_MS);
+      transport.request.resolve('DIRECT_AVAILABLE');
+      options.onTransportReady?.(transport.request.nodeId);
+    }
     options.onProbeResultChange?.();
     void captureTransportNetworkInfo(transport);
   }

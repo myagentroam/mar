@@ -5,6 +5,8 @@ export const NODE_STREAM_CHUNK_BYTES = 32 * 1024;
 export const NODE_STREAM_WINDOW_BYTES = 256 * 1024;
 export const NODE_STREAM_WINDOW_UNIT = 1024;
 export const MAX_NODE_STREAM_FRAME_BYTES = NODE_STREAM_CHUNK_BYTES + 4096 + 3;
+/** Relay WebSocket admission ended for the whole Node, not for a caller's resource scope. */
+export const NODE_RELAY_OFFLINE_CLOSE_CODE = 4004;
 
 export const nodeStreamCreditCost = (length: number) =>
   Math.ceil(length / NODE_STREAM_WINDOW_UNIT) * NODE_STREAM_WINDOW_UNIT;

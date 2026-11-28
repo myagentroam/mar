@@ -1,8 +1,49 @@
+import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { ServerDatabase } from '../../ee/server/src/database.js';
 import { createTestNodeControl } from '../support/create-test-node-control.js';
 
 describe('upgrade-only Node connection admission', () => {
+  it('stops waiting for Relay as soon as the current control connection reports an old version', async () => {
+    const database = new ServerDatabase(':memory:');
+    const user = { userId: database.getAdmin().id, sessionHash: 'test-session' };
+    const token = database.createNodeRegistrationToken(user.userId).token;
+    const identity = database.registerNode(token, { metadata: '{}' })!;
+    const control = createTestNodeControl(database, async () => true);
+    const node = new AdmissionSocket();
+    const pending = new AdmissionSocket();
+    const after = new AdmissionSocket();
+    try {
+      control.attach(node.websocket);
+      node.receive('authenticate', { nodeId: identity.nodeId, credential: identity.credential });
+      await vi.waitFor(() => expect(control.isNodeConnected(identity.nodeId)).toBe(true));
+      control.attachClientRelay(pending.websocket, identity.nodeId, user);
+      expect(pending.close).not.toHaveBeenCalled();
+      expect(pending.send).not.toHaveBeenCalled();
+
+      node.receive('capabilities', {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: 'v24',
+        nodeAppVersion: '0.11.37',
+        codex: { available: false },
+        claudeCode: { available: false }
+      });
+      await vi.waitFor(() => expect(node.send).toHaveBeenCalledTimes(2));
+      expect(control.isNodeConnected(identity.nodeId)).toBe(true);
+      expect(control.isNodeUpgradeOnly(identity.nodeId)).toBe(true);
+      expect(control.upgradeCapabilities(identity.nodeId)?.nodeAppVersion).toBe('0.11.37');
+      expect(pending.close).toHaveBeenCalledExactlyOnceWith(4004, 'NODE_OFFLINE');
+
+      control.attachClientRelay(after.websocket, identity.nodeId, user);
+      expect(after.close).toHaveBeenCalledExactlyOnceWith(4004, 'NODE_OFFLINE');
+      expect(after.send).not.toHaveBeenCalled();
+    } finally {
+      control.close();
+      database.close();
+    }
+  });
+
   it.each([3] as const)(
     'authorizes, correlates and cancels an upgrade on wire v%i without admitting business',
     async (version) => {
@@ -137,3 +178,25 @@ describe('upgrade-only Node connection admission', () => {
     }
   );
 });
+
+class AdmissionSocket extends EventEmitter {
+  readonly OPEN = 1;
+  readyState = this.OPEN;
+  readonly send = vi.fn();
+  readonly ping = vi.fn();
+  readonly close = vi.fn((_code: number, _reason: string) => this.terminate());
+
+  get websocket(): Parameters<ReturnType<typeof createTestNodeControl>['attach']>[0] {
+    return this as unknown as Parameters<ReturnType<typeof createTestNodeControl>['attach']>[0];
+  }
+
+  receive(type: string, payload: unknown): void {
+    this.emit('message', Buffer.from(JSON.stringify({ version: 3, id: type, type, payload })));
+  }
+
+  terminate(): void {
+    if (this.readyState !== this.OPEN) return;
+    this.readyState = 3;
+    this.emit('close');
+  }
+}

@@ -18,20 +18,30 @@ type Selection<Path> = { slot: Slot<Path>; path: Path };
 /** Owns the paths of one logical connection. Its caller owns sharing, idle policy and grants. */
 export class NodeConnection<Request, Stream extends { close(): void }> {
   readonly #lifetime = new AbortController();
+  readonly #direct: Slot<NodeConnectionPath<Request, Stream>> | undefined;
   readonly #paths: Slot<NodeConnectionPath<Request, Stream>>[];
 
   constructor(adapters: {
     direct?: Connect<NodeConnectionPath<Request, Stream>>;
     relay?: Connect<NodeConnectionPath<Request, Stream>>;
   }) {
-    this.#paths = [adapters.direct, adapters.relay].flatMap((connect) =>
-      connect === undefined ? [] : [{ connect }]
-    );
+    this.#direct = adapters.direct === undefined ? undefined : { connect: adapters.direct };
+    this.#paths = this.#direct === undefined ? [] : [this.#direct];
+    if (adapters.relay !== undefined) this.#paths.push({ connect: adapters.relay });
   }
 
   /** Prepare a path without dispatching any operation, e.g. before an IPC handoff. */
   async ready(options?: { signal?: AbortSignal }): Promise<void> {
     await this.#select(this.#signal(options?.signal));
+  }
+
+  /** A caller's Direct readiness notification can refresh that path without dispatching OPEN. */
+  async prepareDirect(): Promise<void> {
+    this.#lifetime.signal.throwIfAborted();
+    const slot = this.#direct;
+    if (slot === undefined) return;
+    if (slot.failed) delete slot.attempt;
+    await this.#prepare(slot);
   }
 
   async openStream(request: Request, options?: { signal?: AbortSignal }): Promise<Stream> {

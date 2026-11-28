@@ -22,6 +22,8 @@ interface Options {
   readonly sendDirect: (message: DirectBrowserMessage) => boolean;
   readonly sendTerminalDirect: (message: TerminalDirectBrowserMessage) => boolean;
   readonly selectedNode: () => string | undefined;
+  readonly onLeaseExpired?: (nodeId: string) => void;
+  readonly onDirectReady?: (nodeId: string) => void;
 }
 
 /** Owns page-local direct transport discovery and lifecycle, not the control connection. */
@@ -38,6 +40,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
   const workspace = createWorkspaceDirectTransferService({
     send: (message) => connectionId !== undefined && !disposed && options.sendDirect(message),
     onProbeResultChange: onChange,
+    onTransportReady: (nodeId) => options.onDirectReady?.(nodeId),
     shouldRetryProbe: (nodeId, generation) =>
       eligible(nodeId) && capabilities.get(nodeId)?.generation === generation
   });
@@ -53,6 +56,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
       requests.delete(nodeId);
       capabilities.delete(nodeId);
       workspace.releaseTransport(nodeId);
+      options.onLeaseExpired?.(nodeId);
       onChange();
     }
   });
@@ -264,17 +268,21 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
   async function connectNodePath(nodeId: string, signal: AbortSignal): Promise<WorkbenchNodePath> {
     if (!capabilities.has(nodeId)) await refresh(nodeId);
     signal.throwIfAborted();
-    const capability = capabilities.get(nodeId);
-    if (!eligible(nodeId) || capability === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
-    const result = await workspace.ensureTransport(nodeId, capability.generation);
+    const control = connectionId;
+    const generation = capabilities.get(nodeId)?.generation;
+    if (!eligible(nodeId) || generation === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
+    const result = await workspace.ensureTransport(nodeId, generation);
     signal.throwIfAborted();
+    const capability = capabilities.get(nodeId);
+    // A same-generation manifest refresh does not invalidate an in-flight ICE probe.
     if (
       result !== 'DIRECT_AVAILABLE' ||
-      capabilities.get(nodeId) !== capability ||
+      connectionId !== control ||
+      capability?.generation !== generation ||
       !eligible(nodeId)
     )
       throw new Error('NODE_DIRECT_UNAVAILABLE');
-    const transport = workspace.acquireTerminalTransport(nodeId, capability.generation);
+    const transport = workspace.acquireTerminalTransport(nodeId, generation);
     if (transport === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
     try {
       const path = await transport.readyStreamPath(signal);
@@ -326,6 +334,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
   return {
     workspace: { upload: workspace.upload, download: workspace.download },
     connectNodePath,
+    isNodeActive: activeNodes.isActive,
     handleDirect: workspace.handle,
     handleTerminalDirect: terminal.handle,
     selectNode: (nodeId: string | undefined) => {

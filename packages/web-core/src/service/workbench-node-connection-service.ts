@@ -1,6 +1,8 @@
 import { NodeConnection, type NodeConnectionPath } from '@myagentroam/protocol/node-connection';
 import { openNodeRelayPath } from '@myagentroam/protocol/node-relay-path';
 import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import { NODE_RELAY_OFFLINE_CLOSE_CODE } from '@myagentroam/protocol/node-stream-wire';
+import { WORKBENCH_NODE_RETENTION_MS } from './active-node-transport-service.js';
 import type { ScopedHttpService } from './scoped-http-service.js';
 import type { TerminalAttachmentRequest } from './terminal-direct-client.js';
 import type {
@@ -41,6 +43,20 @@ export type WorkbenchStreamRequest =
 export type WorkbenchNodePath = NodeConnectionPath<WorkbenchStreamRequest, NodeStream>;
 type Connection = NodeConnection<WorkbenchStreamRequest, NodeStream>;
 type RelayAdmission = { conversationId: string | undefined; signal: AbortSignal };
+class NodeRelayOffline extends Error {
+  readonly code = 'NODE_OFFLINE';
+
+  constructor() {
+    super('NODE_OFFLINE');
+  }
+}
+type Entry = {
+  connection: Connection;
+  admissions: Set<RelayAdmission>;
+  uses: number;
+  expired: boolean;
+  idleTimer?: ReturnType<typeof setTimeout>;
+};
 export type OpenWorkbenchNodeStream = (
   nodeId: string,
   request: WorkbenchStreamRequest,
@@ -51,11 +67,9 @@ export type OpenWorkbenchNodeStream = (
 export function createWorkbenchNodeConnectionService(options: {
   readonly http: ScopedHttpService;
   readonly connectDirect?: (nodeId: string, signal: AbortSignal) => Promise<WorkbenchNodePath>;
+  readonly isNodeActive?: (nodeId: string) => boolean;
 }) {
-  const connections = new Map<
-    string,
-    { connection: Connection; admissions: Set<RelayAdmission> }
-  >();
+  const connections = new Map<string, Entry>();
 
   const openStream: OpenWorkbenchNodeStream = async (nodeId, request, signal) => {
     signal.throwIfAborted();
@@ -65,6 +79,8 @@ export function createWorkbenchNodeConnectionService(options: {
       const admissions = new Set<RelayAdmission>();
       entry = {
         admissions,
+        uses: 0,
+        expired: false,
         connection: new NodeConnection({
           ...(direct === undefined ? {} : { direct: (lifetime) => direct(nodeId, lifetime) }),
           relay: async (lifetime) => {
@@ -79,6 +95,8 @@ export function createWorkbenchNodeConnectionService(options: {
               try {
                 return await connectRelay(nodeId, options.http, handshake, conversationId);
               } catch (error) {
+                // A different Hosted scope cannot make the same Node ready.
+                if (error instanceof NodeRelayOffline) throw error;
                 failure = error;
               }
             }
@@ -97,25 +115,67 @@ export function createWorkbenchNodeConnectionService(options: {
             ? request.descriptor.conversationId
             : undefined
     };
+    clearTimeout(entry.idleTimer);
+    entry.uses++;
+    const use = entry;
+    const release = () => {
+      use.uses--;
+      releaseIfIdle(nodeId, use);
+    };
     entry.admissions.add(admission);
     try {
-      return await entry.connection.openStream(request, { signal });
+      const stream = await entry.connection.openStream(request, { signal });
+      // OPEN alone is not the end of the lease: a file, Terminal or RFB can outlive selection.
+      void stream.finished.then(release);
+      return stream;
+    } catch (error) {
+      release();
+      throw error;
     } finally {
       entry.admissions.delete(admission);
     }
   };
 
+  function releaseIfIdle(nodeId: string, entry: Entry): void {
+    if (connections.get(nodeId) !== entry || entry.uses !== 0 || options.isNodeActive?.(nodeId))
+      return;
+    if (entry.expired) closeNode(nodeId);
+    else {
+      // Relay-only callers such as Hosted do not start a Workspace selection lease.
+      entry.idleTimer = setTimeout(() => {
+        if (!options.isNodeActive?.(nodeId)) closeNode(nodeId);
+      }, WORKBENCH_NODE_RETENTION_MS);
+    }
+  }
+
+  function expireNode(nodeId: string): void {
+    const entry = connections.get(nodeId);
+    if (entry === undefined) return;
+    entry.expired = true;
+    releaseIfIdle(nodeId, entry);
+  }
+
+  async function directReady(nodeId: string): Promise<void> {
+    // A probe can finish before a Node has any streams; never create a new entry here.
+    await connections
+      .get(nodeId)
+      ?.connection.prepareDirect()
+      .catch(() => undefined);
+  }
+
   function closeNode(nodeId: string): void {
-    const connection = connections.get(nodeId);
+    const entry = connections.get(nodeId);
+    if (entry === undefined) return;
     connections.delete(nodeId);
-    connection?.connection.close();
+    clearTimeout(entry.idleTimer);
+    entry.connection.close();
   }
 
   function reset(): void {
     for (const nodeId of connections.keys()) closeNode(nodeId);
   }
 
-  return { openStream, closeNode, reset };
+  return { openStream, expireNode, directReady, closeNode, reset };
 }
 
 async function connectRelay(
@@ -182,6 +242,7 @@ export async function openBrowserNodeRelay(url: URL, signal: AbortSignal) {
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = new WebSocket(url);
   socket.binaryType = 'arraybuffer';
+  let closeCode: number | undefined;
   return openNodeRelayPath({
     carrier: {
       async send(bytes) {
@@ -190,9 +251,21 @@ export async function openBrowserNodeRelay(url: URL, signal: AbortSignal) {
       },
       close: () => socket.close(),
       onMessage: (receive) => socket.addEventListener('message', (event) => receive(event.data)),
-      onClose: (disconnect) => socket.addEventListener('close', disconnect, { once: true })
+      onClose: (disconnect) =>
+        socket.addEventListener(
+          'close',
+          (event) => {
+            closeCode = event.code;
+            disconnect();
+          },
+          { once: true }
+        )
     },
     maxStreams: 32,
     signal
+  }).catch((error) => {
+    signal.throwIfAborted();
+    if (closeCode === NODE_RELAY_OFFLINE_CLOSE_CODE) throw new NodeRelayOffline();
+    throw error;
   });
 }
