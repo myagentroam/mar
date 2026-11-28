@@ -2,6 +2,7 @@ import { NodeConnection, type NodeConnectionPath } from '@myagentroam/protocol/n
 import { openNodeRelayPath } from '@myagentroam/protocol/node-relay-path';
 import type { NodeStream } from '@myagentroam/protocol/node-stream';
 import { NODE_RELAY_OFFLINE_CLOSE_CODE } from '@myagentroam/protocol/node-stream-wire';
+import type { WorkbenchStreamTransport } from '../model/workbench.js';
 import { WORKBENCH_NODE_RETENTION_MS } from './active-node-transport-service.js';
 import type { ScopedHttpService } from './scoped-http-service.js';
 import type { TerminalAttachmentRequest } from './terminal-direct-client.js';
@@ -41,7 +42,12 @@ export type WorkbenchStreamRequest =
       readonly descriptor: HostedConversationFileStreamInput;
     };
 export type WorkbenchNodePath = NodeConnectionPath<WorkbenchStreamRequest, NodeStream>;
-type Connection = NodeConnection<WorkbenchStreamRequest, NodeStream>;
+type RoutedStream = {
+  readonly stream: NodeStream;
+  readonly transport: WorkbenchStreamTransport;
+  close(): void;
+};
+type Connection = NodeConnection<WorkbenchStreamRequest, RoutedStream>;
 type RelayAdmission = { conversationId: string | undefined; signal: AbortSignal };
 class NodeRelayOffline extends Error {
   readonly code = 'NODE_OFFLINE';
@@ -71,7 +77,11 @@ export function createWorkbenchNodeConnectionService(options: {
 }) {
   const connections = new Map<string, Entry>();
 
-  const openStream: OpenWorkbenchNodeStream = async (nodeId, request, signal) => {
+  const openRoutedStream = async (
+    nodeId: string,
+    request: WorkbenchStreamRequest,
+    signal: AbortSignal
+  ): Promise<RoutedStream> => {
     signal.throwIfAborted();
     let entry = connections.get(nodeId);
     if (entry === undefined) {
@@ -82,7 +92,9 @@ export function createWorkbenchNodeConnectionService(options: {
         uses: 0,
         expired: false,
         connection: new NodeConnection({
-          ...(direct === undefined ? {} : { direct: (lifetime) => direct(nodeId, lifetime) }),
+          ...(direct === undefined
+            ? {}
+            : { direct: async (lifetime) => routePath(await direct(nodeId, lifetime), 'ice') }),
           relay: async (lifetime) => {
             // Only cold Relay admission uses these hints. An admitted carrier is not conversation-owned.
             const handshake = nodeRelayHandshakeSignal(lifetime);
@@ -93,7 +105,10 @@ export function createWorkbenchNodeConnectionService(options: {
               if (signal.aborted || attempted.has(conversationId)) continue;
               attempted.add(conversationId);
               try {
-                return await connectRelay(nodeId, options.http, handshake, conversationId);
+                return routePath(
+                  await connectRelay(nodeId, options.http, handshake, conversationId),
+                  'relay'
+                );
               } catch (error) {
                 // A different Hosted scope cannot make the same Node ready.
                 if (error instanceof NodeRelayOffline) throw error;
@@ -124,10 +139,10 @@ export function createWorkbenchNodeConnectionService(options: {
     };
     entry.admissions.add(admission);
     try {
-      const stream = await entry.connection.openStream(request, { signal });
+      const opened = await entry.connection.openStream(request, { signal });
       // OPEN alone is not the end of the lease: a file, Terminal or RFB can outlive selection.
-      void stream.finished.then(release);
-      return stream;
+      void opened.stream.finished.then(release);
+      return opened;
     } catch (error) {
       release();
       throw error;
@@ -135,6 +150,8 @@ export function createWorkbenchNodeConnectionService(options: {
       entry.admissions.delete(admission);
     }
   };
+  const openStream: OpenWorkbenchNodeStream = async (nodeId, request, signal) =>
+    (await openRoutedStream(nodeId, request, signal)).stream;
 
   function releaseIfIdle(nodeId: string, entry: Entry): void {
     if (connections.get(nodeId) !== entry || entry.uses !== 0 || options.isNodeActive?.(nodeId))
@@ -175,7 +192,21 @@ export function createWorkbenchNodeConnectionService(options: {
     for (const nodeId of connections.keys()) closeNode(nodeId);
   }
 
-  return { openStream, expireNode, directReady, closeNode, reset };
+  return { openStream, openRoutedStream, expireNode, directReady, closeNode, reset };
+}
+
+/** Only the adapter that successfully opens the stream can report its transport. */
+function routePath(path: WorkbenchNodePath, transport: WorkbenchStreamTransport) {
+  return {
+    get closed() {
+      return path.closed;
+    },
+    close: () => path.close(),
+    async openStream(request: WorkbenchStreamRequest, signal: AbortSignal) {
+      const stream = await path.openStream(request, signal);
+      return stream === undefined ? undefined : { stream, transport, close: () => stream.close() };
+    }
+  };
 }
 
 async function connectRelay(

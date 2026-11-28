@@ -102,7 +102,7 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
       }
     }
   });
-  const files = input.fileStreams ?? createWorkspaceFileStreamClient(connections.openStream);
+  const files = input.fileStreams ?? createWorkspaceFileStreamClient(connections.openRoutedStream);
 
   async function initialize(): Promise<void> {
     const requestId = ++initialization;

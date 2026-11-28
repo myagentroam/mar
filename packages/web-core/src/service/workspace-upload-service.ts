@@ -1,6 +1,6 @@
 import { createUuid } from '../util/uuid.js';
 import { unboundAccountStorage } from './account-storage-service.js';
-import type { WorkspaceTarget } from '../model/workbench.js';
+import type { WorkbenchStreamTransport, WorkspaceTarget } from '../model/workbench.js';
 import { computed, ref, watch, type Ref } from 'vue';
 import { translate } from './locale-preference-service.js';
 import { errorCode } from '../util/api-error.js';
@@ -22,6 +22,7 @@ export interface WorkspaceUploadTask extends Omit<WorkspaceUploadRequest, 'file'
   readonly size: number;
   uploadId?: string;
   receivedBytes: number;
+  transport?: WorkbenchStreamTransport;
   status: 'QUEUED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
   error?: string;
   cancelled: boolean;
@@ -273,7 +274,14 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   }
 
   function statusLabel(task: WorkspaceUploadTask): string {
-    if (task.status === 'UPLOADING') return translate('generated.workspaceUploadService.uploading');
+    if (task.status === 'UPLOADING')
+      return translate(
+        task.transport === 'ice'
+          ? 'generated.workspaceUploadService.uploadingDirect'
+          : task.transport === 'relay'
+            ? 'generated.workspaceUploadService.uploadingServer'
+            : 'generated.workspaceUploadService.uploading'
+      );
     if (task.status === 'QUEUED') return translate('generated.workspaceUploadService.queued');
     if (task.status === 'COMPLETED') return translate('generated.workspaceUploadService.completed');
     if (task.status === 'CANCELLED') return translate('generated.workspaceUploadService.canceled');
@@ -311,6 +319,8 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     ) {
       const next = tasks.value.find((task) => task.status === 'QUEUED');
       if (next === undefined) return;
+      // A resumed upload has a new body stream and can take a different route.
+      delete next.transport;
       next.status = 'UPLOADING';
       changed(next);
       void upload(next).finally(() => void drain());
@@ -396,6 +406,9 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
         },
         file: source,
         signal: uploadController.signal,
+        onTransport: (transport) => {
+          task.transport = transport;
+        },
         onProgress: (offset) => {
           task.receivedBytes = offset;
         }

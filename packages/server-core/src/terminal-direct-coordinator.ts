@@ -9,7 +9,7 @@ import type {
   DirectTransferCoordinator
 } from './direct-transfer-coordinator.js';
 import { NodeRequestError } from './node-request-error.js';
-import { matchesNodeResource, type NodeResourceScope } from './node-access-contracts.js';
+import { matchesNodeOperation, type NodeOperationScope } from './node-access-contracts.js';
 
 const LEASE_MS = 30_000;
 const OPEN_MS = 15_000;
@@ -362,12 +362,16 @@ export class TerminalDirectCoordinator {
         session.nodeId,
         session.nodeGeneration
       ) !== undefined &&
-      (await this.options.authorize(
-        session.userId,
-        session.nodeId,
-        session.workspaceId,
-        session.computer
-      ))
+      (await this.canUseTerminal(session))
+    );
+  }
+
+  private async canUseTerminal(session: DirectTerminalSession): Promise<boolean> {
+    return this.options.authorize(
+      session.userId,
+      session.nodeId,
+      session.workspaceId,
+      session.computer
     );
   }
 
@@ -381,12 +385,13 @@ export class TerminalDirectCoordinator {
         await this.closeSession(session, 'TERMINAL_DIRECT_LEASE_EXPIRED');
   }
 
-  async revalidateAuthorizations(scope: NodeResourceScope): Promise<void> {
+  async revalidateAuthorizations(scope: NodeOperationScope): Promise<void> {
+    // A Workbench reconnect is not a loss of resource access; renewal owns transport liveness.
     await Promise.all(
       [...this.sessions.values()].map(async (session) => {
         if (
-          matchesNodeResource(scope, session) &&
-          !(await this.authorized(session).catch(() => false))
+          matchesNodeOperation(scope, session) &&
+          !(await this.canUseTerminal(session).catch(() => false))
         )
           await this.closeSession(session, 'TERMINAL_NOT_AUTHORIZED');
       })

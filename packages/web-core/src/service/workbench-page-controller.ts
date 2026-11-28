@@ -318,14 +318,13 @@ export function createWorkbenchPageController<
         ? {}
         : { activeWorker: options.pwaApplication.activeWorker })
     }),
-    sendUploadBody: ({ nodeId, conversationId, uploadId }, file, signal, onProgress) =>
+    sendUploadBody: async ({ nodeId, conversationId, uploadId }, file, signal, onProgress) =>
       sendFileUploadBody(
-        () =>
-          nodeConnections.openStream(
-            nodeId,
-            { kind: 'hosted-file-upload', conversationId, uploadId },
-            signal
-          ),
+        await nodeConnections.openStream(
+          nodeId,
+          { kind: 'hosted-file-upload', conversationId, uploadId },
+          signal
+        ),
         file,
         signal,
         onProgress
@@ -480,7 +479,7 @@ export function createWorkbenchPageController<
     connectDirect: directTransport.connectNodePath,
     isNodeActive: directTransport.isNodeActive
   });
-  const fileStreams = createWorkspaceFileStreamClient(nodeConnections.openStream);
+  const fileStreams = createWorkspaceFileStreamClient(nodeConnections.openRoutedStream);
   const browser = createWorkbenchBrowserService({
     send: workbenchLiveConnection.sendBrowser,
     http: workbenchHttpService.request,

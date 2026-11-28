@@ -105,6 +105,21 @@ export class FileStreamTickets<Ticket extends TicketIdentity> {
     );
   }
 
+  revokeUser(userId: number): void {
+    for (const [id, { ticket, timer }] of this.pending) {
+      if (ticket.user.userId !== userId) continue;
+      clearTimeout(timer);
+      this.pending.delete(id);
+    }
+    for (const [ticket, { scope, prepared }] of this.active) {
+      if (
+        ticket.user.userId === userId &&
+        !(prepared && this.options.finishAfterResourceRevocation?.(ticket))
+      )
+        scope.abort();
+    }
+  }
+
   close(): void {
     this.closed = true;
     for (const { timer } of this.pending.values()) clearTimeout(timer);

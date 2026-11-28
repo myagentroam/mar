@@ -66,14 +66,13 @@ const workspace = createHostedConversationWorkspaceService({
     http: { request },
     openStream: nodeConnections.openStream
   }),
-  sendUploadBody: ({ nodeId, conversationId, uploadId }, file, signal, onProgress) =>
+  sendUploadBody: async ({ nodeId, conversationId, uploadId }, file, signal, onProgress) =>
     sendFileUploadBody(
-      () =>
-        nodeConnections.openStream(
-          nodeId,
-          { kind: 'hosted-file-upload', conversationId, uploadId },
-          signal
-        ),
+      await nodeConnections.openStream(
+        nodeId,
+        { kind: 'hosted-file-upload', conversationId, uploadId },
+        signal
+      ),
       file,
       signal,
       onProgress

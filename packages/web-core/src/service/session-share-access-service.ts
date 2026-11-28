@@ -112,12 +112,8 @@ export function createSessionShareAccessService(
   };
   browser?.addEventListener?.('storage', onStorage);
   let connection: NodeConnection<WorkbenchFileStreamRequest, NodeStream> | undefined;
-  const fileStreams = createWorkspaceFileStreamClient((nodeId, stream, signal) => {
-    if (
-      session.value?.share.nodeId !== nodeId ||
-      (stream.kind !== 'file-download' && stream.kind !== 'file-upload')
-    )
-      return Promise.reject(new Error('SESSION_SHARE_ACCESS_INVALID'));
+  const fileStreams = createWorkspaceFileStreamClient(async (nodeId, stream, signal) => {
+    if (session.value?.share.nodeId !== nodeId) throw new Error('SESSION_SHARE_ACCESS_INVALID');
     connection ??= new NodeConnection({
       async relay(lifetime) {
         const path = await openBrowserNodeRelay(
@@ -141,7 +137,7 @@ export function createSessionShareAccessService(
         };
       }
     });
-    return connection.openStream(stream, { signal });
+    return { stream: await connection.openStream(stream, { signal }), transport: 'relay' };
   });
   function closeFiles(): void {
     connection?.close();

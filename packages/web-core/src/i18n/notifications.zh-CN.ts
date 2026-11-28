@@ -55,9 +55,8 @@ export const notificationsZhCN = {
   generated: {
     workspaceUploadService: {
       uploading: '上传中',
-      uploadingDirect: '局域网直连上传',
+      uploadingDirect: '点对点直连上传',
       uploadingServer: 'Server 中继上传',
-      uploadingServerFallback: 'Server 中继上传',
       queued: '排队中',
       completed: '已完成',
       canceled: '已取消',

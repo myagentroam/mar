@@ -233,6 +233,9 @@ export function createComposerAttachmentService(options: {
             }
           },
           file: attachment.file,
+          onTransport: (transport) => {
+            attachment.transport = transport;
+          },
           onProgress: (offset) => {
             attachment.receivedBytes = offset;
           },

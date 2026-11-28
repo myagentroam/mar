@@ -232,6 +232,11 @@ export function registerWorkspaceRoutes(input: {
         request.query.nodeId,
         request.params.workspaceId
       );
+      // The Node can retain a detached Terminal; the removed Workspace no longer grants access.
+      await nodeControl.revalidateDataAuthorizations({
+        nodeId: request.query.nodeId,
+        workspaceId: request.params.workspaceId
+      });
       return reply.send(result);
     } catch (error) {
       return databaseError(reply, error);

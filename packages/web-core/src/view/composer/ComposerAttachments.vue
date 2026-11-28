@@ -42,18 +42,11 @@ const emit = defineEmits<{
       <span class="attachment-name">{{ attachment.file.name }}</span>
       <small>{{ Math.ceil(attachment.file.size / 1024) }} KiB</small>
       <small v-if="attachment.status === 'UPLOADING'">
-        <template v-if="attachment.transport === 'DIRECT'">
+        <template v-if="attachment.transport === 'ice'">
           {{ translate('generated.composerAttachments.directTransport') }} ·
         </template>
-        <template v-else-if="attachment.transport === 'SERVER'">
-          {{
-            translate(
-              attachment.directFallback
-                ? 'generated.composerAttachments.serverFallbackTransport'
-                : 'generated.composerAttachments.serverTransport'
-            )
-          }}
-          ·
+        <template v-else-if="attachment.transport === 'relay'">
+          {{ translate('generated.composerAttachments.serverTransport') }} ·
         </template>
         <template v-if="attachment.receivedBytes === 0">{{
           translate('generated.composerAttachments.uploading')

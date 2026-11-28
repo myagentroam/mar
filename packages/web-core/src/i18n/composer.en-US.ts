@@ -120,9 +120,8 @@ export const composerEnUS = {
   },
   generated: {
     composerAttachments: {
-      directTransport: 'Direct LAN connection',
+      directTransport: 'Peer-to-peer connection',
       serverTransport: 'Server relay',
-      serverFallbackTransport: 'Server relay',
       enlargeAttachment: 'Enlarge attachment {value0}',
       enlarge: 'Enlarge {value0}',
       uploading: 'Uploading…',

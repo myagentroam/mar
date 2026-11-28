@@ -341,18 +341,6 @@ export class OrganizationService {
     }
   }
 
-  async memberUserIds(organizationId: number): Promise<readonly number[]> {
-    const [rows] = await this.database.raw.execute<RowDataPacket[]>(
-      `WITH RECURSIVE subtree AS (
-        SELECT id FROM organizations WHERE id=?
-        UNION ALL SELECT child.id FROM organizations child
-        JOIN subtree parent ON child.parent_organization_id=parent.id
-      ) SELECT u.id FROM users u JOIN subtree organization ON organization.id=u.organization_id`,
-      [organizationId]
-    );
-    return rows.map((row) => Number(row['id']));
-  }
-
   private async get(organizationId: number): Promise<object> {
     const [rows] = await this.database.raw.execute<RowDataPacket[]>(
       `SELECT id,name,parent_organization_id,created_at,updated_at
