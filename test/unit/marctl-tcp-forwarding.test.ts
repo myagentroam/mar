@@ -113,8 +113,25 @@ async function fixture({ expireSessionOnCarrierAdmission = false } = {}) {
   data.connect(binding);
   teardown.push(() => data.disconnect());
   return {
-    closeAuthenticatedConnections(userId = user.userId) {
-      control.closeUserSessions(userId);
+    invalidateLogin() {
+      sessionActive = false;
+      control.invalidateLoginSession(user.sessionHash);
+    },
+    async changeUserAccess(next = false) {
+      allowed = next;
+      await control.revalidateUserAuthorizations(user.userId);
+    },
+    deleteUser() {
+      allowed = false;
+      sessionActive = false;
+      control.closeUserSessions(user.userId);
+    },
+    async changeOrganizationAccess() {
+      allowed = false;
+      await control.revalidateOrganizationAuthorizations([]);
+    },
+    revalidateNodeAccess() {
+      return control.revalidateDataAuthorizations({ nodeId });
     },
     async revoke() {
       allowed = false;
@@ -272,8 +289,10 @@ describe('marctl TCP forwarding through the production Relay', () => {
     const probe = createConnection({ port: listener.port, host });
     const [[remote]] = await Promise.all([accepted, once(probe, 'connect')]);
     try {
-      runtime.closeAuthenticatedConnections();
-      const data = once(probe, 'data');
+      runtime.invalidateLogin();
+      // A later ACL edit retaining Node access must not treat a retired login as resource loss.
+      await runtime.revalidateNodeAccess();
+      const data = once(probe, 'data', { signal: AbortSignal.timeout(2_000) });
       remote.write('still admitted');
       expect(String((await data)[0])).toBe('still admitted');
 
@@ -292,6 +311,43 @@ describe('marctl TCP forwarding through the production Relay', () => {
     await vi.waitFor(() => bind(listener.server, listener.port));
     expect(await forward.result()).toMatchObject({ status: 1 });
   });
+
+  it.each(['changeUserAccess', 'deleteUser', 'changeOrganizationAccess'] as const)(
+    'ends the forwarding lease when %s removes effective Node access',
+    async (change) => {
+      const runtime = await fixture();
+      const target = await reserve();
+      const listener = await reserve();
+      await new Promise<void>((resolve) => listener.server.close(() => resolve()));
+      const forward = runtime.run('-R', listener.port, target.port);
+      await forward.ready();
+
+      // A role change that leaves effective access allows both the listener and new data OPENs.
+      await runtime.changeUserAccess(true);
+      const accepted = once(target.server, 'connection', { signal: AbortSignal.timeout(2_000) });
+      const probe = createConnection({ host, port: listener.port });
+      teardown.push(() => {
+        probe.destroy();
+      });
+      probe.on('error', () => {});
+      const [[remote]] = await Promise.all([accepted, once(probe, 'connect')]);
+      teardown.push(() => {
+        remote.destroy();
+      });
+      const data = once(probe, 'data');
+      remote.write('retained');
+      expect(String((await data)[0])).toBe('retained');
+
+      const closed = once(probe, 'close', { signal: AbortSignal.timeout(2_000) });
+      await runtime[change]();
+      await closed;
+      expect(await forward.result()).toMatchObject({
+        status: 1,
+        stderr: expect.stringContaining('RESOURCE_DENIED')
+      });
+      await bind(listener.server, listener.port);
+    }
+  );
 
   it('does not admit the carrier when a CLI session expires during Node authorization', async () => {
     const runtime = await fixture({ expireSessionOnCarrierAdmission: true });

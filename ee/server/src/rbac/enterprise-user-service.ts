@@ -174,13 +174,14 @@ export class EnterpriseUserService {
     role: EnterpriseRole,
     requestedOrganizationId: number,
     profile?: { readonly email: string | null; readonly nickname: string | null }
-  ): Promise<ReturnType<typeof publicEnterpriseUser>> {
+  ): Promise<{ user: ReturnType<typeof publicEnterpriseUser>; membershipChanged: boolean }> {
     await requireAllowed(this.authorization.authorizeManagedUser(actorUserId, targetUserId));
     const organizationId = role === 'ADMIN' ? 1 : requestedOrganizationId;
     await requireAllowed(
       this.authorization.authorizeRoleAssignment(actorUserId, role, organizationId)
     );
     const connection = await this.database.raw.getConnection();
+    let membershipChanged: boolean;
     try {
       await connection.beginTransaction();
       await lockOrganizationReference(connection, 1, true);
@@ -205,6 +206,10 @@ export class EnterpriseUserService {
         (profile === undefined || role !== 'ADMIN' || requestedOrganizationId !== 1)
       )
         throw new Error('ADMIN_USER_PROTECTED');
+      // Compare with the locked row so profile edits don't trigger authorization cleanup.
+      membershipChanged =
+        !fixedAdmin &&
+        (before[0]?.['role'] !== role || before[0]?.['organization_id'] !== organizationId);
       const [result] = await connection.execute<ResultSetHeader>(
         fixedAdmin
           ? `UPDATE users SET email=?,nickname=?,updated_at=? WHERE id=? AND is_fixed_admin=TRUE`
@@ -220,7 +225,7 @@ export class EnterpriseUserService {
             : [role, organizationId, profile.email, profile.nickname, this.now(), targetUserId]
       );
       if (result.affectedRows !== 1) throw new Error('USER_NOT_FOUND_OR_PROTECTED');
-      await revokeOutOfScopeResourceGrants(connection);
+      if (membershipChanged) await revokeOutOfScopeResourceGrants(connection);
       emitAuditAfterCommit(this.database, connection, {
         eventType: 'user.updated',
         actorUserId,
@@ -242,7 +247,7 @@ export class EnterpriseUserService {
     } finally {
       connection.release();
     }
-    return this.get(targetUserId);
+    return { user: await this.get(targetUserId), membershipChanged };
   }
 
   async update(
@@ -254,7 +259,7 @@ export class EnterpriseUserService {
       readonly role: EnterpriseRole;
       readonly organizationId: number;
     }
-  ): Promise<ReturnType<typeof publicEnterpriseUser>> {
+  ) {
     return this.assign(actorUserId, targetUserId, input.role, input.organizationId, {
       email: input.email,
       nickname: input.nickname

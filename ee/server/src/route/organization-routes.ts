@@ -16,7 +16,9 @@ export function registerOrganizationRoutes(input: {
   readonly database: SessionLookup;
   readonly organizations: OrganizationService;
   readonly publicOrigin: string | undefined;
-  readonly nodeControl: { closeUserSessions(userId: number): void };
+  readonly nodeControl: {
+    revalidateOrganizationAuthorizations(memberUserIds: readonly number[]): Promise<void>;
+  };
 }): void {
   const { app, database, organizations, publicOrigin, nodeControl } = input;
   app.get('/api/organizations', async (request, reply) => {
@@ -63,8 +65,9 @@ export function registerOrganizationRoutes(input: {
           organizationId,
           request.body.parentOrganizationId
         );
-        for (const userId of await organizations.memberUserIds(organizationId))
-          nodeControl.closeUserSessions(userId);
+        await nodeControl.revalidateOrganizationAuthorizations(
+          await organizations.memberUserIds(organizationId)
+        );
         return reply.send({ organization });
       }
       const name = normalizedOptionalText(request.body?.name, 128);
@@ -85,6 +88,7 @@ export function registerOrganizationRoutes(input: {
       if (organizationId === undefined) return sendError(reply, 400, 'ORGANIZATION_ID_INVALID');
       try {
         await organizations.remove(actor.userId, organizationId);
+        await nodeControl.revalidateOrganizationAuthorizations([]);
         return reply.code(204).send();
       } catch (error) {
         return databaseError(reply, error);

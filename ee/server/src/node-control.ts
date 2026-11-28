@@ -40,7 +40,7 @@ import type {
 import type { NodeRequestBroker } from './service/node-request-broker.js';
 import { WorkspaceFileStreamTickets } from './service/workspace-file-stream-tickets.js';
 import { FileStreamTickets } from './service/file-stream-tickets.js';
-import { TcpForwardRelay } from './service/tcp-forward-relay.js';
+import { TcpForwardRelay, type TcpForwardAdmissionChecks } from './service/tcp-forward-relay.js';
 import { tcpForwardControlKind, tcpForwardDataKind } from '@myagentroam/protocol/tcp-forward';
 import type { HostedFileStreamTicket } from '@myagentroam/server-core/hosted-conversation-routes';
 import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
@@ -486,7 +486,7 @@ export class NodeControl extends NodeIdentityControl {
     user: UserNodeAuthorization,
     cliExpiresAt?: number,
     hostedOnly = false,
-    allowTcpForward?: () => Promise<boolean>
+    tcpForwardAdmission?: TcpForwardAdmissionChecks
   ): void {
     if (socket.readyState !== socket.OPEN) return;
     if (cliExpiresAt !== undefined && cliExpiresAt <= Date.now()) {
@@ -504,8 +504,8 @@ export class NodeControl extends NodeIdentityControl {
       this.dataClients.delete(socket);
     });
     const forward =
-      cliExpiresAt !== undefined && !hostedOnly && allowTcpForward !== undefined
-        ? this.tcpForwardRelay.forCarrier(nodeId, allowTcpForward)
+      cliExpiresAt !== undefined && !hostedOnly && tcpForwardAdmission !== undefined
+        ? this.tcpForwardRelay.forCarrier(nodeId, user.userId, tcpForwardAdmission)
         : undefined;
     const authorize: NodeStreamAuthorizer = async ({ kind, grant }, signal) => {
       if (kind === tcpForwardControlKind || kind === tcpForwardDataKind)
@@ -669,6 +669,22 @@ export class NodeControl extends NodeIdentityControl {
   closeUserSessions(userId: number): void {
     for (const [socket, user] of this.dataClients)
       if (user.userId === userId) this.dataClients.delete(socket);
+    this.closeUserAttachments(userId);
+    this.tcpForwardRelay.revokeUser(userId);
+  }
+
+  revalidateUserAuthorizations(userId: number): Promise<void> {
+    this.closeUserAttachments(userId);
+    return this.tcpForwardRelay.revalidate({ userId });
+  }
+
+  revalidateOrganizationAuthorizations(memberUserIds: readonly number[]): Promise<void> {
+    for (const userId of memberUserIds) this.closeUserAttachments(userId);
+    // A tree change can also invalidate grants held by users outside the moved subtree.
+    return this.tcpForwardRelay.revalidate();
+  }
+
+  private closeUserAttachments(userId: number): void {
     this.workbenchRelay.closeUser(userId);
     this.terminalRelay.closeUser(userId);
     this.terminalDirect.revokeUser(userId);
@@ -689,7 +705,7 @@ export class NodeControl extends NodeIdentityControl {
       this.browser?.revalidateAuthorizations(scope),
       ...(scope.workspaceId === undefined
         ? [
-            this.tcpForwardRelay.revalidate(scope.nodeId),
+            this.tcpForwardRelay.revalidate({ nodeId: scope.nodeId }),
             this.hostedFileTickets.revalidate((ticket) => ticket.nodeId === scope.nodeId)
           ]
         : [])
