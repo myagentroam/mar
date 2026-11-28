@@ -132,13 +132,15 @@ export async function createSessionRuntime(
   fingerprint: MarAgentHostFingerprint,
   hostConfiguration: MarAgentHostRuntimeConfiguration,
   dependencies: MarAgentRuntimeResources,
-  currentRunId: () => string | undefined
+  currentRunId: () => string | undefined,
+  signal: AbortSignal
 ): Promise<MarAgentSessionRuntime> {
   const sharedMcpServers = input.mcpServers.filter((server) => !isExecutionScopedMcp(server));
   const mcpLease = await dependencies.mcpClients.acquire(sharedMcpServers, input.cwd, {
     // Native Session IDs are assigned after the first lease; do not let that promotion
     // change a confirmed actor's discovery identity when its warm runtime is recreated.
-    authorizationScope: input.secretEnvironment?.['MAR_USERNAME'] ? input.cwd : sessionKey
+    authorizationScope: input.secretEnvironment?.['MAR_USERNAME'] ? input.cwd : sessionKey,
+    signal
   });
   let agent: Awaited<ReturnType<typeof createAgent>> | undefined;
   let models: MarAgentRuntimeModel[] = [];
@@ -146,6 +148,7 @@ export async function createSessionRuntime(
   let orchestrationContext:
     ReturnType<NonNullable<MarAgentRuntimeResources['attachOrchestrationContext']>> | undefined;
   try {
+    signal.throwIfAborted();
     releaseEnvironment = dependencies.retainEnvironment?.(input.secretEnvironment ?? {});
     orchestrationContext = dependencies.attachOrchestrationContext?.(input.sessionId, currentRunId);
     const mcp = mcpLease.pool;

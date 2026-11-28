@@ -151,7 +151,8 @@ export class MarAgentSessionRuntimeRegistry {
               entry.runtime === created.runtime &&
               entry.release === undefined
                 ? entry.current?.runId
-                : undefined
+                : undefined,
+            lifetime.signal
           );
           uncommitted = created.runtime;
           this.#addAlias(entry, uncommitted.session.id);
