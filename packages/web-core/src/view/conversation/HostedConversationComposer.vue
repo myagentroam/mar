@@ -205,9 +205,6 @@ const inputHasContent = computed(
     completedAttachmentIds.value.length > 0 ||
     attachments.value.some((attachment) => attachment.status === 'PENDING')
 );
-const canReplaceCurrent = computed(
-  () => activeRun.value !== undefined && activeRun.value.status !== 'CANCELLING'
-);
 const pendingStops = reactive(new Set<string>());
 const stopStatus = computed(() => {
   const conversation = snapshot.value?.conversation;
@@ -221,6 +218,10 @@ const stopStatus = computed(() => {
     return 'CANCELLING';
   return activeRun.value === undefined ? conversation.activity.status : 'RUNNING';
 });
+// The activity update can confirm Stop before Watch changes the Run status.
+const canReplaceCurrent = computed(
+  () => activeRun.value !== undefined && stopStatus.value === 'RUNNING'
+);
 const canStopCurrent = computed(
   () =>
     stopStatus.value === 'RUNNING' &&
@@ -233,6 +234,7 @@ const inputReadonly = computed(
     props.workspace.templateChanging.value ||
     (!props.draft && snapshot.value !== undefined && !props.workspace.watchReady.value) ||
     (props.draft === true && props.entry?.writable.value === false) ||
+    stopStatus.value === 'CANCELLING' ||
     (activeRun.value !== undefined && !canReplaceCurrent.value)
 );
 const composerReadonly = computed(() => inputReadonly.value || submitting.value);

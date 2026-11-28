@@ -615,6 +615,16 @@ async function openHostedSend(
         }
       });
   }
+  const emitActivity = (status: 'RUNNING' | 'CANCELLING' | 'IDLE', version: number) =>
+    page.evaluate(
+      (detail) => window.dispatchEvent(new CustomEvent('fixture-hosted-watch', { detail })),
+      {
+        type: 'hosted-conversation.activity',
+        nodeId: snapshot.conversation.nodeId,
+        conversationId: snapshot.conversation.id,
+        activity: { status, version, updatedAt: version }
+      }
+    );
   return {
     composer,
     input,
@@ -626,6 +636,7 @@ async function openHostedSend(
     message,
     requests,
     emitRun,
+    emitActivity,
     reply(failure: boolean | 'cancelled' = false) {
       const resolve = replies.shift();
       if (resolve === undefined) throw new Error('No pending Hosted message POST');
@@ -649,38 +660,56 @@ test('Hosted Composer stops a pending startup before a Run exists and keeps the 
   });
   const f = await openHostedSend(page);
   const stop = f.composer.locator('.hosted-stop-button');
-  const emit = (status: 'RUNNING' | 'CANCELLING' | 'IDLE', version: number) =>
-    page.evaluate(
-      (detail) => window.dispatchEvent(new CustomEvent('fixture-hosted-watch', { detail })),
-      {
-        type: 'hosted-conversation.activity',
-        nodeId: 'node-1',
-        conversationId: 'conversation-1',
-        activity: { status, version, updatedAt: version }
-      }
-    );
   try {
     await f.input.fill(f.prompt);
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);
     await expect(stop).toHaveCount(0);
-    await emit('RUNNING', 1);
+    await f.emitActivity('RUNNING', 1);
     await expect(f.sending).toBeVisible();
     await expect(stop).toBeEnabled();
     await stop.click();
     await expect.poll(() => stops).toBe(1);
     await expect(stop).toBeDisabled();
-    await emit('CANCELLING', 2);
+    await f.emitActivity('CANCELLING', 2);
     interrupt.resolve();
     await expect(stop).toBeDisabled();
     f.reply('cancelled');
-    await emit('IDLE', 3);
+    await f.emitActivity('IDLE', 3);
     await expect(f.send).toBeEnabled();
     await expect(f.input).toHaveValue(f.prompt);
     await expect(f.message).toHaveCount(0);
     await expect(page.locator('.mar-message')).toHaveCount(0);
   } finally {
     interrupt.resolve();
+    f.release();
+  }
+});
+
+test('Hosted Composer stops offering insertion while a Run is cancelling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const f = await openHostedSend(page);
+  const stop = f.composer.locator('.hosted-stop-button');
+  try {
+    await f.input.fill(f.prompt);
+    await f.send.click();
+    await expect.poll(() => f.requests.length).toBe(1);
+    await f.emitRun();
+    f.reply();
+    await expect(f.input).toHaveValue('');
+    await f.input.fill('Keep this follow-up draft.');
+    await expect(f.send).toBeEnabled();
+    // The activity update can arrive while Watch still reports the Run as RUNNING.
+    await f.emitActivity('CANCELLING', 1);
+    await expect(stop).toBeDisabled();
+    await expect(f.send).toHaveCount(0);
+    await expect(f.input).toHaveAttribute('readonly', '');
+    await f.emitRun('SUCCEEDED');
+    await f.emitActivity('IDLE', 2);
+    await expect(f.send).toBeEnabled();
+    await expect(f.input).toHaveValue('Keep this follow-up draft.');
+    expect(f.requests).toHaveLength(1);
+  } finally {
     f.release();
   }
 });

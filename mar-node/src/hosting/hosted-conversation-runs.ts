@@ -464,6 +464,9 @@ export class HostedConversationRuns {
             this.options.uploads.requireAttachment(payload.userId, conversation.id, fileId)
           )
         );
+        // Stop may be accepted while resolving attachments. Do not dispatch a new steer after it.
+        if (this.expectsInterruption(conversation.id, handle.run.id))
+          throw new Error('HOSTED_CONVERSATION_RUN_ACTIVE');
         result = await handle.steer({
           prompt: input.prompt,
           modelText: attachmentPrompt(steerPrompt, attachments),

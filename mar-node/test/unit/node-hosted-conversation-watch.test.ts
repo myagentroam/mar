@@ -243,7 +243,7 @@ describe('Node hosted conversation watch', () => {
       f.database.close();
     }
   });
-  it('does not restart a hosted Run when Stop wins over a pending native steer', async () => {
+  it.each([true, false])('blocks steer or restart after Stop (sent: %s)', async (steerSent) => {
     const f = await watchFixture();
     const completion = Promise.withResolvers<{ status: 'INTERRUPTED'; completedAt: number }>();
     const admission = Promise.withResolvers<import('@myagentroam/agent').SteerResult>();
@@ -271,6 +271,8 @@ describe('Node hosted conversation watch', () => {
         prompt: 'Original message',
         attachmentIds: []
       });
+      const stop = () => operations['conversation.hosted.interrupt']!(request);
+      if (!steerSent) expect(await stop()).toEqual({ interrupted: true });
       const pending = Promise.resolve(
         operations['conversation.hosted.message']!({
           ...request,
@@ -283,13 +285,17 @@ describe('Node hosted conversation watch', () => {
         () => ({ status: 'sent' }),
         (error: Error) => ({ status: 'rejected', code: error.message })
       );
-      await vi.waitFor(() => expect(steer).toHaveBeenCalledOnce());
-      expect(await operations['conversation.hosted.interrupt']!(request)).toEqual({
-        interrupted: true
-      });
+      if (steerSent) {
+        await vi.waitFor(() => expect(steer).toHaveBeenCalledOnce());
+        expect(await stop()).toEqual({ interrupted: true });
+      }
       admission.resolve({ status: 'notAccepted' });
+      expect(await pending).toEqual({
+        status: 'rejected',
+        code: 'HOSTED_CONVERSATION_RUN_ACTIVE'
+      });
+      expect(steer).toHaveBeenCalledTimes(steerSent ? 1 : 0);
       completion.resolve({ status: 'INTERRUPTED', completedAt: 2200 });
-      expect(await pending).toEqual({ status: 'rejected', code: 'HOSTED_CONVERSATION_RUN_ACTIVE' });
       expect(cancel).toHaveBeenCalledOnce();
       expect(f.runtime.startRun).toHaveBeenCalledOnce();
       expect(f.store.findMessage(7, conversationId, 'guidance')).toBeUndefined();
