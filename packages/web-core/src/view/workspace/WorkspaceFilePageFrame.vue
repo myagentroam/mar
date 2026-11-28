@@ -2,27 +2,25 @@
 import './file-tooltip-trigger.css';
 import './file-preview.css';
 import './view-toolbar-control.css';
-import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId, useSlots, watch } from 'vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdown, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { translate } from '../../service/locale-preference-service.js';
-import WorkspaceFloatingActions from '../common/WorkspaceFloatingActions.vue';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 import FilePreviewState from './FilePreviewState.vue';
 
-const props = withDefaults(
-  defineProps<{
-    readonly fileName: string;
-    readonly path: string;
-    readonly sourceLabel?: string | undefined;
-    readonly loading?: boolean;
-    readonly loadError?: string | undefined;
-    readonly fullscreen?: boolean;
-    readonly contained?: boolean;
-    readonly mobileActionsLabel?: string | undefined;
-    readonly mobileActionsLayout?: 'compact' | 'wrap' | 'stacked' | 'image';
-  }>(),
-  { mobileActionsLayout: 'wrap' }
-);
+// The frame owns the mobile toolbar and its position; file pages own the actions and state.
+const props = defineProps<{
+  readonly fileName: string;
+  readonly path: string;
+  readonly sourceLabel?: string | undefined;
+  readonly loading?: boolean;
+  readonly loadError?: string | undefined;
+  readonly fullscreen?: boolean;
+  readonly contained?: boolean;
+  readonly mobileActionsLabel?: string | undefined;
+}>();
 
 const pathLabel = computed(() => (props.path === props.fileName ? undefined : props.path));
 const emit = defineEmits<{ retry: [] }>();
@@ -52,6 +50,13 @@ async function retryRead(): Promise<void> {
   if (!props.loading) retrying.value = false;
 }
 const slots = useSlots();
+const mobileActionsId = useId();
+const mobileActionsExpanded = ref(true);
+const mobileToggleLabel = computed(() =>
+  mobileActionsExpanded.value
+    ? translate('filePreviewDialog.collapseToolbar')
+    : translate('filePreviewDialog.expandToolbar')
+);
 const focus = createMobileSurfaceFocusService({
   isOpen: () => props.fullscreen === true && !props.contained,
   regions: () => [root.value]
@@ -87,6 +92,9 @@ defineExpose({ root });
         <slot name="primary-actions" />
         <slot name="secondary-actions" />
       </div>
+      <div v-if="slots['mobile-header-actions']" class="file-preview-mobile-header-actions">
+        <slot name="mobile-header-actions" />
+      </div>
     </header>
     <div class="workspace-file-page-frame-content">
       <FilePreviewLoading v-if="props.loading && !retrying" overlay />
@@ -99,19 +107,62 @@ defineExpose({ root });
       />
       <slot v-else-if="!props.loadError" />
     </div>
-    <WorkspaceFloatingActions
-      v-if="slots['mobile-actions']"
-      class="mobile-preview-actions workspace-file-mobile-actions"
-      :layout="props.mobileActionsLayout"
-      :label="
-        props.mobileActionsLabel ?? translate('generated.filePreviewDialog.filePreviewActions')
-      "
-      :collapse-label="translate('filePreviewDialog.collapseMobileActions')"
-      :expand-label="translate('filePreviewDialog.expandMobileActions')"
-      mobile-only
-    >
-      <slot name="mobile-actions" />
-    </WorkspaceFloatingActions>
+    <div v-if="slots['mobile-actions'] || slots['mobile-menu']" class="file-preview-mobile-footer">
+      <div
+        class="workspace-file-mobile-actions mar-compact-overlay"
+        :class="{
+          'is-disclosable': slots['mobile-menu'],
+          'is-collapsed': slots['mobile-menu'] && !mobileActionsExpanded
+        }"
+        role="group"
+        :aria-label="
+          props.mobileActionsLabel ?? translate('generated.filePreviewDialog.filePreviewActions')
+        "
+      >
+        <div
+          :id="mobileActionsId"
+          class="file-preview-mobile-reveal"
+          :inert="!!slots['mobile-menu'] && !mobileActionsExpanded"
+          :aria-hidden="(!!slots['mobile-menu'] && !mobileActionsExpanded) || undefined"
+        >
+          <div class="file-preview-mobile-clip">
+            <div class="file-preview-mobile-row">
+              <slot name="mobile-actions" />
+              <MarDropdown
+                v-if="slots['mobile-menu']"
+                :disabled="!mobileActionsExpanded"
+                placement="top-end"
+                popper-class="mar-ui-popup--animated-exit"
+              >
+                <MarButton
+                  v-tooltip="translate('filePreviewDialog.moreActions')"
+                  :aria-label="translate('filePreviewDialog.moreActions')"
+                  class="mar-icon-action"
+                  icon="more"
+                  text
+                />
+                <template #dropdown>
+                  <MarDropdownMenu :aria-label="translate('filePreviewDialog.moreActions')">
+                    <slot name="mobile-menu" />
+                  </MarDropdownMenu>
+                </template>
+              </MarDropdown>
+            </div>
+          </div>
+        </div>
+        <MarButton
+          v-if="slots['mobile-menu']"
+          v-tooltip="mobileToggleLabel"
+          class="file-preview-mobile-toggle mar-icon-action mar-icon-action--panel-toggle"
+          :aria-label="mobileToggleLabel"
+          :aria-expanded="mobileActionsExpanded"
+          :aria-controls="mobileActionsId"
+          :icon="mobileActionsExpanded ? 'chevrons-right' : 'chevrons-left'"
+          text
+          @click="mobileActionsExpanded = !mobileActionsExpanded"
+        />
+      </div>
+    </div>
   </section>
 </template>
 
@@ -198,6 +249,11 @@ defineExpose({ root });
   border-radius: var(--mar-radius-control);
 }
 
+.file-preview-mobile-footer,
+.file-preview-mobile-header-actions {
+  display: none;
+}
+
 @media (min-width: 768px) {
   .workspace-file-page-frame-header {
     box-sizing: border-box;
@@ -230,8 +286,83 @@ defineExpose({ root });
     align-items: flex-start;
   }
 
-  .workspace-file-page-frame .mar-file-preview-actions {
-    min-height: 36px;
+  .workspace-file-page-frame.is-fullscreen {
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+      env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+
+  .file-preview-mobile-header-actions {
+    display: flex;
+    align-self: center;
+  }
+
+  /* Keep the reading viewport separate from the dock; opening the menu never resizes it. */
+  .file-preview-mobile-footer {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    padding: 8px 12px 12px;
+  }
+
+  .workspace-file-mobile-actions {
+    --image-action-gap: 4px;
+    display: flex;
+    align-items: center;
+    border-radius: var(--mar-radius-surface);
+  }
+
+  .file-preview-mobile-row {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .is-disclosable .file-preview-mobile-row {
+    padding-inline-end: 0;
+  }
+
+  /* Size only the disclosure track. The toggle stays at the footer's right edge;
+     the full-size row stays mounted and is clipped instead of squeezing the icons. */
+  .is-disclosable .file-preview-mobile-reveal {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: end;
+    opacity: 1;
+
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        grid-template-columns 160ms ease-out,
+        opacity 120ms ease-out;
+    }
+  }
+
+  .is-collapsed .file-preview-mobile-reveal {
+    grid-template-columns: minmax(0, 0fr);
+    opacity: 0;
+  }
+
+  .is-disclosable .file-preview-mobile-clip {
+    display: flex;
+    min-inline-size: 0;
+    justify-content: flex-end;
+    overflow: clip;
+    overflow-clip-margin: 4px; /* Leave room for the shared keyboard focus outline. */
+  }
+
+  .workspace-file-mobile-actions :deep(.mar-icon-action),
+  .file-preview-mobile-header-actions :deep(.mar-icon-action) {
+    --mar-ui-button-icon-size: 18px;
+    inline-size: 36px;
+    min-inline-size: 36px;
+    block-size: 36px;
+    margin-inline-start: 0;
+  }
+
+  .workspace-file-mobile-actions :deep(.file-preview-mobile-toggle) {
+    flex: none;
+    margin: 4px;
   }
 }
 </style>

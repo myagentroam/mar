@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-28
 ---
 
 # Keyboard Shortcuts
@@ -58,7 +58,7 @@ While typing into a page in the [Workspace browser](../workbench/browser.md), `E
 
 Mobile Enter always inserts a newline; use the send button to submit. `Ctrl/Cmd+F` and `Ctrl/Cmd+A` are intercepted only when the focused or active page explicitly provides internal Find or Select All; ordinary pages, forms, and native controls keep their browser or native behavior. `Shift+Tab` always retains its native focus or menu behavior. Shortcuts are disabled while an input method editor is composing text and may be unavailable while an operation is loading.
 
-On mobile, tap the find icon in the preview actions to search within a text file or Diff.
+On mobile, tap the find icon at the bottom right of a text file. In a Diff, open **More file actions (⋯)** and select **Find in file**. Both open the inline search.
 
 Mobile browser Back closes the whole file window, not one file tab or a position in file-navigation history. Canceling an unsaved-change confirmation keeps the window open. Companion file pages and rendered previews use the same Back behavior.
 

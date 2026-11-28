@@ -41,6 +41,176 @@ test('A long Diff filename truncates without hiding the mode on mobile', async (
   expect(modeBox.x + modeBox.width).toBeLessThan(390);
 });
 
+for (const [width, height, theme, reducedMotion] of [
+  [390, 844, 'dark', 'no-preference'],
+  [390, 844, 'light', 'no-preference'],
+  [320, 720, 'dark', 'reduce'],
+  [667, 375, 'dark', 'reduce']
+] as const) {
+  test(`Mobile file dock shares its right edge at ${width}px (${theme})`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ reducedMotion });
+    for (const [name, mode, count] of [
+      ['diff', 'diff=HISTORY&diff-code', 5],
+      ['code', 'text=code&draft=1', 3],
+      ['image', 'image=landscape', 5],
+      ['download', 'preview-state=unsupported', 1]
+    ] as const) {
+      await page.goto(`${fixture.url}file-editor-layout.html?${mode}&theme=${theme}`);
+      const dock = page.locator('.workspace-file-mobile-actions');
+      const content = page.locator('.workspace-file-page-frame-content');
+      const buttons = dock.getByRole('button');
+      await expect(buttons).toHaveCount(count === 1 ? 1 : count + 1);
+      await expect(dock).toBeVisible();
+      const box = (await dock.boundingBox())!;
+      const body = (await content.boundingBox())!;
+      expect(box.x).toBeGreaterThan(0);
+      expect(box.x + box.width).toBeCloseTo(width - 12, 1);
+      expect(box.y + box.height).toBeCloseTo(height - 12, 1);
+      expect(body.y + body.height).toBeLessThan(box.y);
+      const targets = await buttons.evaluateAll((items) =>
+        items.map((item) => {
+          const { x, y, width, height } = item.getBoundingClientRect();
+          return { x, y, width, height };
+        })
+      );
+      expect(new Set(targets.map(({ y }) => y)).size).toBe(1);
+      expect(targets.every(({ width, height }) => width === 36 && height === 36)).toBe(true);
+      expect(targets.slice(1).every(({ x }, index) => x - targets[index]!.x === 40)).toBe(true);
+
+      if (width === 390) {
+        await page.screenshot({
+          path: info.outputPath(`${name}-${theme}.png`),
+          animations: 'disabled'
+        });
+      }
+      if (name === 'download') {
+        await expect(dock.getByRole('button', { name: 'Download file' })).toBeVisible();
+        continue;
+      }
+      const more = dock.getByRole('button', { name: 'More file actions' });
+      const menu = dock.getByRole('menu', { name: 'More file actions' });
+      const toggle = dock.getByRole('button', { name: /file toolbar$/u });
+      await expect(toggle).toHaveAccessibleName('Collapse file toolbar');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      const toggleBox = await toggle.boundingBox();
+      await more.click();
+      await expect(menu).toBeVisible();
+      const menuBox = (await menu.boundingBox())!;
+      const moreBox = (await more.boundingBox())!;
+      expect(menuBox.x + menuBox.width).toBeCloseTo(moreBox.x + moreBox.width, 1);
+      expect(menuBox.y + menuBox.height).toBeLessThan(moreBox.y);
+      expect(await dock.boundingBox()).toEqual(box);
+      expect(await content.boundingBox()).toEqual(body);
+      if (width === 390 && name === 'diff') {
+        await page.mouse.move(width / 2, height / 2);
+        await page.screenshot({
+          path: info.outputPath(`diff-menu-${theme}.png`),
+          animations: 'disabled'
+        });
+      }
+      const popup = dock.locator('.mar-ui-dropdown__popup.mar-ui-popup--animated-exit').last();
+      await expect(popup).toHaveCSS('opacity', '1');
+      await popup.evaluate((element) => {
+        element.addEventListener('transitionrun', (event) => {
+          if ((event as TransitionEvent).propertyName === 'opacity')
+            element.setAttribute('data-exit-ran', 'true');
+        });
+      });
+      await page.keyboard.press('Escape');
+      await expect(more).toBeFocused();
+      await expect(more).toHaveAttribute('aria-expanded', 'false');
+      await expect(popup).toHaveAttribute('inert', '');
+      if (reducedMotion === 'no-preference') {
+        await expect(popup).toHaveAttribute('data-exit-ran', 'true');
+      } else {
+        await expect(popup).not.toHaveAttribute('data-exit-ran', 'true');
+      }
+      await expect(menu).not.toBeVisible();
+      await expect(popup).toBeHidden();
+      expect(await dock.boundingBox()).toEqual(box);
+      expect(await content.boundingBox()).toEqual(body);
+
+      await more.click();
+      await expect(menu).toBeVisible();
+      const reveal = dock.locator('.file-preview-mobile-reveal');
+      await reveal.evaluate((element) => {
+        element.addEventListener('transitionrun', (event) => {
+          if (event.propertyName === 'grid-template-columns')
+            element.setAttribute('data-width-transition-ran', 'true');
+        });
+      });
+      await dock.evaluate((element) => {
+        const edge = element.getBoundingClientRect().right;
+        const observer = new ResizeObserver(() => {
+          const { right, width } = element.getBoundingClientRect();
+          if (Math.abs(right - edge) > 0.5) element.setAttribute('data-right-edge-moved', 'true');
+          if (width === 46) observer.disconnect();
+        });
+        observer.observe(element);
+      });
+      await toggle.click();
+      await expect(toggle).toHaveAccessibleName('Expand file toolbar');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(menu).not.toBeVisible();
+      await expect(buttons).toHaveCount(1);
+      await expect(reveal).toHaveAttribute('inert', '');
+      await expect.poll(async () => (await dock.boundingBox())?.width).toBe(46);
+      await expect(dock).not.toHaveAttribute('data-right-edge-moved', 'true');
+      expect(await toggle.boundingBox()).toEqual(toggleBox);
+      expect(await content.boundingBox()).toEqual(body);
+      if (reducedMotion === 'no-preference') {
+        await expect(reveal).toHaveAttribute('data-width-transition-ran', 'true');
+      } else {
+        await expect(reveal).not.toHaveAttribute('data-width-transition-ran', 'true');
+      }
+      if (width === 390 && name === 'diff') {
+        await page.mouse.move(width / 2, height / 2);
+        await page.screenshot({
+          path: info.outputPath(`diff-collapsed-${theme}.png`),
+          animations: 'disabled'
+        });
+      }
+      await toggle.press('Enter');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(toggle).toBeFocused();
+      await expect.poll(() => dock.boundingBox()).toEqual(box);
+      await expect(buttons).toHaveCount(count + 1);
+      expect(await toggle.boundingBox()).toEqual(toggleBox);
+      expect(await content.boundingBox()).toEqual(body);
+      if (name === 'diff') {
+        await page.keyboard.press('Shift+Tab');
+        await expect(more).toBeFocused();
+        await expect(more).toHaveCSS('outline-style', 'solid');
+        await expect(more).toHaveCSS('outline-width', '2px');
+        await page.keyboard.press('Enter');
+        await menu.getByRole('menuitem', { name: 'Find in file' }).click();
+        await expect(page.getByRole('search', { name: 'Find in file' })).toBeVisible();
+      }
+    }
+  });
+}
+
+test('Reopening More during its exit keeps the new menu interactive', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${fixture.url}file-editor-layout.html?diff=HISTORY&diff-code`);
+  const more = page.getByRole('button', { name: 'More file actions' });
+  const menu = page.getByRole('menu', { name: 'More file actions' });
+  await more.click();
+  await expect(menu).toHaveCSS('opacity', '1');
+  await more.evaluate((button: HTMLButtonElement) => {
+    const menu = button.parentElement!.querySelector('[role="menu"]')!;
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    button.click();
+  });
+  await expect(more).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu).toHaveCSS('opacity', '1');
+  await menu.getByRole('menuitem', { name: 'Find in file' }).click();
+  await expect(page.getByRole('search', { name: 'Find in file' })).toBeVisible();
+});
+
 for (const width of [320, 390, 1280]) {
   test(`File image controls share the existing file actions at ${width}px`, async ({
     page
@@ -56,7 +226,7 @@ for (const width of [320, 390, 1280]) {
     const pan = actions.getByRole('button', { name: 'Pan image', exact: true });
     const download = actions.getByRole('button', { name: /Download/ });
     await expect(zoom).toBeVisible();
-    await expect(download).toBeVisible();
+    if (!mobile) await expect(download).toBeVisible();
     await expect(pan).toBeDisabled();
     await expect(pan.locator('[data-mar-icon="pan"]')).toBeVisible();
     await zoom.click();
@@ -89,22 +259,34 @@ for (const width of [320, 390, 1280]) {
     await menu.getByRole('menuitem', { name: 'Pan left', exact: true }).click();
     await expect(menu).not.toBeVisible();
     if (mobile) {
-      const toggle = actions.locator('.workspace-floating-actions-toggle');
-      await toggle.click();
-      await expect(zoom).toHaveCount(0);
-      await expect(download).toHaveCount(0);
-      await toggle.click();
+      const more = actions.getByRole('button', { name: 'More file actions' });
+      await more.click();
+      await expect(actions.getByRole('menuitem', { name: 'Download file' })).toBeVisible();
       await expect(zoom).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(more).toBeFocused();
+      await expect(actions.getByRole('menu', { name: 'More file actions' })).not.toBeVisible();
     }
   });
 }
 
-test('File image pan menu closes when its toolbar is hidden at a breakpoint', async ({ page }) => {
+test('File image pan menu closes when its toolbar is collapsed or hidden at a breakpoint', async ({
+  page
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${fixture.url}file-editor-layout.html?image=landscape`);
   const menu = page.getByRole('menu', { name: 'Pan image', exact: true });
-  const mobilePan = page.locator('.workspace-file-mobile-actions [aria-haspopup="menu"]');
+  const mobilePan = page.locator('.workspace-file-mobile-actions button[aria-label="Pan image"]');
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await mobilePan.click();
+  await expect(menu).toBeVisible();
+
+  const toggle = page.getByRole('button', { name: /file toolbar$/u });
+  // Keyboard activation has no outside pointer event to dismiss the nested menu.
+  await toggle.evaluate((element: HTMLButtonElement) => element.click());
+  await expect(menu).not.toBeVisible();
+  await expect(mobilePan).toHaveAttribute('aria-expanded', 'false');
+  await toggle.press('Enter');
   await mobilePan.click();
   await expect(menu).toBeVisible();
 
@@ -371,7 +553,6 @@ for (const theme of ['light', 'dark']) {
     browserName
   }, testInfo) => {
     for (const mode of ['text=code&draft=1', 'diff=HISTORY&shortcuts=1', 'image=small']) {
-      let desktopStyle: unknown;
       for (const width of [1280, 390]) {
         const context = await browser.newContext({
           viewport: { width, height: 844 },
@@ -379,6 +560,8 @@ for (const theme of ['light', 'dark']) {
           hasTouch: width < 768
         });
         try {
+          const mobile = width < 768;
+          const transparent = 'rgba(0, 0, 0, 0)';
           const page = await context.newPage();
           await page.goto(`${fixture.url}file-editor-layout.html?${mode}&theme=${theme}`);
           const toolbar = page.locator(
@@ -393,11 +576,13 @@ for (const theme of ['light', 'dark']) {
               ? 'Find in file'
               : mode.startsWith('diff')
                 ? 'Previous change'
-                : 'Download file',
+                : mobile
+                  ? 'Zoom in'
+                  : 'Download file',
             exact: true
           });
           await expect(find).toBeVisible();
-          await expect(toolbar.locator('[data-mar-icon="more"]')).toHaveCount(0);
+          await expect(toolbar.locator('[data-mar-icon="more"]')).toHaveCount(mobile ? 1 : 0);
           const header = page.locator('.workspace-file-page-frame-header');
           const frameContent = page.locator('.workspace-file-page-frame-content');
           for (const side of ['top', 'right', 'bottom', 'left']) {
@@ -466,7 +651,6 @@ for (const theme of ['light', 'dark']) {
             const css = getComputedStyle(element);
             return { color: css.color, background: css.backgroundColor, border: css.borderColor };
           });
-          let saveStates: unknown;
           const tokens = await find.evaluate((element) => {
             const probe = document.createElement('span');
             element.append(probe);
@@ -489,10 +673,17 @@ for (const theme of ['light', 'dark']) {
             return result;
           });
           for (const button of await toolbar.locator('.mar-ui-button:visible').all()) {
-            await expect(button).toHaveCSS('background-color', tokens.background);
+            await expect(button).toHaveCSS(
+              'background-color',
+              mobile ? transparent : tokens.background
+            );
             await expect(button).toHaveCSS(
               'border-color',
-              (await button.isDisabled()) ? tokens.disabledBorder : tokens.border
+              mobile
+                ? transparent
+                : (await button.isDisabled())
+                  ? tokens.disabledBorder
+                  : tokens.border
             );
             if (width >= 768 && !(await button.isDisabled())) {
               await button.hover();
@@ -503,12 +694,13 @@ for (const theme of ['light', 'dark']) {
             }
           }
           if (mode.startsWith('text')) {
+            const idleBackground = mobile ? transparent : tokens.background;
             await toolbar.getByRole('button', { name: 'Edit file', exact: true }).click();
             const save = toolbar.getByRole('button', { name: 'Save', exact: true });
             await expect(save).toBeEnabled();
             await expect(save).toHaveCSS('border-radius', radius);
             await page.mouse.move(0, 0);
-            await expect(save).toHaveCSS('background-color', tokens.background);
+            await expect(save).toHaveCSS('background-color', idleBackground);
             await toolbar.screenshot({
               path: testInfo.outputPath(`file-tools-${theme}-${width}-normal.png`)
             });
@@ -530,8 +722,11 @@ for (const theme of ['light', 'dark']) {
             await expect(save).toHaveCSS('outline-color', tokens.focus);
             await expect(save).toHaveCSS('outline-width', '2px');
             await page.mouse.move(0, 0);
-            await expect(save).toHaveCSS('background-color', tokens.background);
-            await expect(save).toHaveCSS('color', normal.color);
+            await expect(save).toHaveCSS(
+              'background-color',
+              mobile ? tokens.iconHoverBackground : idleBackground
+            );
+            await expect(save).toHaveCSS('color', mobile ? tokens.hoverText : normal.color);
             const enabled = await save.evaluate(
               (element) => getComputedStyle(element).backgroundColor
             );
@@ -541,26 +736,25 @@ for (const theme of ['light', 'dark']) {
               const active = await save.evaluate((element) => element.matches(':active'));
               await expect(save).toHaveCSS(
                 'background-color',
-                active ? tokens.pressedBackground : enabled
+                active && !mobile ? tokens.pressedBackground : enabled
               );
-              await expect(save).toHaveCSS('color', active ? tokens.hoverText : normal.color);
+              await expect(save).toHaveCSS(
+                'color',
+                active || mobile ? tokens.hoverText : normal.color
+              );
             } finally {
               await page.keyboard.up('Space');
             }
             await expect(save).toBeDisabled();
-            await expect(save).toHaveCSS('background-color', tokens.background);
-            await expect(save).toHaveCSS('border-color', tokens.disabledBorder);
+            await expect(save).toHaveCSS('background-color', idleBackground);
+            await expect(save).toHaveCSS(
+              'border-color',
+              mobile ? transparent : tokens.disabledBorder
+            );
             await page.mouse.move(0, 0);
             await toolbar.screenshot({
               path: testInfo.outputPath(`file-tools-${theme}-${width}-disabled.png`)
             });
-            saveStates = {
-              enabled,
-              disabled: await save.evaluate(async (element) => {
-                await Promise.all(element.getAnimations().map((animation) => animation.finished));
-                return getComputedStyle(element).backgroundColor;
-              })
-            };
           }
           if (mode.startsWith('diff')) {
             await page.getByRole('button', { name: 'Find preview content', exact: true }).click();
@@ -592,44 +786,12 @@ for (const theme of ['light', 'dark']) {
             await search.getByRole('button', { name: 'Close find' }).click();
             await expect(search).toHaveCount(0);
           }
-          if (width === 1280) desktopStyle = { normal, saveStates };
-          else {
-            expect({ normal, saveStates }).toEqual(desktopStyle);
+          if (mobile) {
             await expect(find).toHaveCSS('width', '36px');
             await expect(find).toHaveCSS('height', '36px');
             await page.screenshot({
               path: testInfo.outputPath(`toolbar-${theme}-${mode.split('=')[0]}.png`)
             });
-            const toggle = toolbar.locator('.workspace-floating-actions-toggle');
-            await expect(toggle).toHaveCSS('border-radius', radius);
-            await toggle.click();
-            await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-            await expect(toolbar.locator('.workspace-floating-actions-body')).toHaveAttribute(
-              'inert',
-              ''
-            );
-            await toggle.click();
-            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-            // Enter keyboard navigation before collapsing the other in-document tab stops.
-            await toggle.focus();
-            await page.keyboard.press('Shift+Tab');
-            await expect(toggle).not.toBeFocused();
-            await page.keyboard.press('Tab');
-            await expect(toggle).toBeFocused();
-            await expect(toggle).toHaveCSS('border-radius', radius);
-            await expect(toggle).toHaveCSS('outline-style', 'solid');
-            await expect(toggle).toHaveCSS('outline-width', '2px');
-            await page.keyboard.press('Enter');
-            await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-            await expect(toolbar.locator('.workspace-floating-actions-body')).toHaveAttribute(
-              'inert',
-              ''
-            );
-            await expect(toggle).toHaveCSS('outline-style', 'solid');
-            await expect(toggle).toHaveCSS('outline-width', '2px');
-            await page.keyboard.press('Enter');
-            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-            await expect(find).toBeVisible();
           }
         } finally {
           await context.close();
@@ -734,7 +896,8 @@ test('Fallback draft selection and Diff find remain scoped to the visible previe
   await page.locator('.workspace-file-page-frame').focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('html')).toHaveAttribute('data-moved-file', '1');
-  await page.getByRole('button', { name: 'Find in file', exact: true }).click();
+  await page.getByRole('button', { name: 'More file actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Find in file', exact: true }).click();
   await expect(page.locator('.inline-find-bar')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.inline-find-bar')).toHaveCount(0);
@@ -867,4 +1030,29 @@ test('Long Diff and fallback text scroll inside the preview without moving the h
       await expect(notice).toBeInViewport();
     }
   }
+});
+
+test.describe('Touch file toolbar', () => {
+  test.use({ hasTouch: true });
+  test('Tapping the file toolbar toggle preserves a scrolled Diff', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${fixture.url}file-editor-layout.html?diff=TOOL_CHANGE&long=1`);
+    const scroller = page.locator('.unified-history-diff');
+    await expect(scroller).toBeVisible();
+    const before = await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight / 2;
+      return element.scrollTop;
+    });
+    expect(before).toBeGreaterThan(0);
+    const dock = page.locator('.workspace-file-mobile-actions');
+    const toggle = dock.getByRole('button', { name: /file toolbar$/u });
+    await toggle.tap();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect.poll(async () => (await dock.boundingBox())?.width).toBe(46);
+    expect(await scroller.evaluate((element) => element.scrollTop)).toBe(before);
+    await toggle.tap();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(dock.getByRole('button', { name: 'More file actions' })).toBeVisible();
+    expect(await scroller.evaluate((element) => element.scrollTop)).toBe(before);
+  });
 });

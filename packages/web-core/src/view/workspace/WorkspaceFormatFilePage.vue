@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import './file-preview.css';
 import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -123,7 +124,6 @@ defineExpose({
     @retry="emit('reload')"
     :fullscreen="fullscreen"
     :contained="contained"
-    :mobile-actions-layout="kind === 'image' ? 'image' : 'compact'"
     tabindex="-1"
     :aria-hidden="active === false || undefined"
     :inert="active === false"
@@ -166,35 +166,42 @@ defineExpose({
       </MarButton>
     </template>
     <template #mobile-actions>
-      <ImagePreviewControls
-        v-if="imageControls"
-        class="file-image-controls"
-        :controls="imageControls"
-      />
+      <ImagePreviewControls v-if="imageControls" :controls="imageControls" ghost />
       <MarButton
-        class="file-toolbar-control"
-        v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
+        v-else
+        class="mar-icon-action"
+        v-tooltip="translate('generated.filePreviewDialog.downloadFile')"
         :loading="downloading"
         :icon="marIcon('download')"
-        :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
-        circle
+        :aria-label="translate('generated.filePreviewDialog.downloadFile')"
+        text
         @click="emit('download')"
       />
+    </template>
+    <template v-if="imageControls" #mobile-menu>
+      <MarDropdownItem
+        :icon="downloading ? 'loading-action' : 'download'"
+        :disabled="downloading"
+        :aria-busy="downloading || undefined"
+        @click="emit('download')"
+      >
+        {{ translate('generated.filePreviewDialog.downloadFile') }}
+      </MarDropdownItem>
+    </template>
+    <template v-if="fullscreen" #mobile-header-actions>
       <MarButton
-        class="file-toolbar-control"
+        class="mar-icon-action"
         v-tooltip="
-          shortcutTooltip(translate('generated.filePreviewDialog.closePreview2'), [
+          shortcutTooltip(translate('generated.filePreviewDialog.closePreview'), [
             ...closeAllTabsKeys,
             ...fileKeys.dismiss
           ])
         "
-        v-if="fullscreen"
-        :aria-label="translate('generated.filePreviewDialog.closePreview2')"
-        circle
+        :aria-label="translate('generated.filePreviewDialog.closePreview')"
+        icon="close"
+        text
         @click="emit('close')"
-      >
-        <MarIcon name="close" />
-      </MarButton>
+      />
     </template>
     <main class="mar-file-preview-content">
       <template v-if="!loading">

@@ -164,13 +164,12 @@ export const filePreviewEnUS = {
   gitDiffViewer: {
     mobileSummary: 'Diff summary',
     mobileFileSummary: 'Files {value0} / {value1}',
-    mobileChangeSummary: 'Changes {value0} / {value1}',
-    collapseMobileActions: 'Collapse diff actions',
-    expandMobileActions: 'Expand diff actions'
+    mobileChangeSummary: 'Changes {value0} / {value1}'
   },
   filePreviewDialog: {
     closeFileWindow: 'Close file window',
-    collapseMobileActions: 'Collapse file preview actions',
-    expandMobileActions: 'Expand file preview actions'
+    moreActions: 'More file actions',
+    collapseToolbar: 'Collapse file toolbar',
+    expandToolbar: 'Expand file toolbar'
   }
 } as const;

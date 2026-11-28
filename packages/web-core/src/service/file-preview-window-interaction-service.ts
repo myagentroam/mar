@@ -71,6 +71,14 @@ export function createFilePreviewWindowInteractionService(
       event.defaultPrevented ||
       event.isComposing ||
       event.keyCode === 229 ||
+      // The window shortcut can run in capture; let the focused menu consume Escape first.
+      event.composedPath().some((target) => {
+        const menu = target as Element;
+        return (
+          menu.nodeType === 1 &&
+          menu.matches('.mar-ui-dropdown__popup:is(:popover-open, [data-open]):not([inert])')
+        );
+      }) ||
       // A dialog can disappear before a listener sees Escape. The original
       // propagation path still identifies a dialog after it has been removed.
       event.composedPath().some((target) => {

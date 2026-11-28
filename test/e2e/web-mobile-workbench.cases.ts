@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { mockWorkspaceFileRelay } from './support/mock-workspace-file-relay.js';
 import {
   emitMockSessionEvent,
   fulfillMockSessionWatch,
@@ -562,19 +563,10 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       }
     });
   });
-  await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) =>
-    json(route, {
-      file: {
-        path: new URL(route.request().url()).searchParams.get('path') ?? 'src/main.ts',
-        encoding: 'utf-8',
-        size: Buffer.byteLength('# Agent constraints\n'),
-        content: '# Agent constraints\n',
-        truncated: false,
-        nextOffset: null,
-        revision: 'a'.repeat(64)
-      }
-    })
-  );
+  await mockWorkspaceFileRelay(page, 'node-1', 'workspace-1', (path) => {
+    expect(path).toBe('AGENTS.md');
+    return Buffer.from('# Agent constraints\n');
+  });
   await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
     json(route, { preparation: { state: 'UNAVAILABLE' } })
   );
@@ -912,14 +904,15 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       width: 390,
       height: 844
     });
-  await expect(preview.locator('.mobile-preview-actions')).toBeVisible();
-  await expect(
-    preview.locator('.mobile-preview-actions').getByRole('button', { name: '下载文件' })
-  ).toBeVisible();
+  const previewActions = preview.locator('.workspace-file-mobile-actions');
+  await expect(previewActions).toBeVisible();
+  const previewMore = previewActions.getByRole('button', { name: '更多文件操作' });
   await expect(preview.getByText(/^只读文件 · /u)).toBeVisible();
-  await expect(
-    preview.locator('.mobile-preview-actions').getByRole('button', { name: 'Markdown 预览设置' })
-  ).toBeVisible();
+  await previewMore.click();
+  await expect(previewActions.getByRole('menuitem', { name: '下载文件' })).toBeVisible();
+  await expect(previewActions.getByRole('menuitem', { name: 'Markdown 预览设置' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(previewMore).toHaveAttribute('aria-expanded', 'false');
   await expect(preview.getByRole('button', { name: '关闭预览', exact: true })).toBeVisible();
   const mobilePreviewActionBounds = await page
     .getByRole('button', { name: '关闭文件窗口', exact: true })
@@ -942,22 +935,12 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   expect(mobilePreviewActionBounds.bottom).toBeLessThanOrEqual(
     mobilePreviewActionBounds.viewportHeight
   );
-  await preview.getByRole('button', { name: '收起文件预览快捷操作' }).click();
-  await expect(preview.locator('.workspace-floating-actions-body')).toHaveAttribute(
-    'aria-hidden',
-    'true'
-  );
-  await preview.getByRole('button', { name: '展开文件预览快捷操作' }).click();
-  await expect(preview.locator('.workspace-floating-actions-body')).toHaveAttribute(
-    'aria-hidden',
-    'false'
-  );
-  await preview
-    .locator('.mobile-preview-actions')
-    .getByRole('button', { name: '文件内查找' })
-    .click();
+  const previewToggle = previewActions.getByRole('button', { name: '收起文件工具栏' });
+  await previewToggle.click();
+  await expect(previewActions.getByRole('button')).toHaveCount(1);
+  await previewActions.getByRole('button', { name: '展开文件工具栏' }).click();
+  await previewActions.getByRole('button', { name: '文件内查找' }).click();
   await expect(preview.getByRole('search', { name: '文件内查找' })).toBeVisible();
-  await preview.getByRole('button', { name: '收起文件预览快捷操作' }).click();
   await preview.getByRole('button', { name: '关闭查找' }).click();
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
 
@@ -989,36 +972,21 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       width: 390,
       height: 844
     });
-  await expect(diff.locator('.mobile-preview-actions')).toBeVisible();
+  const diffActions = diff.locator('.workspace-file-mobile-actions');
+  await expect(diffActions).toBeVisible();
   const diffSummary = diff.getByLabel('Diff 摘要');
   await expect(diffSummary.getByText('文件 1 / 1', { exact: true })).toBeVisible();
   await expect(diffSummary.getByText('差异 1 / 1', { exact: true })).toBeVisible();
-  const diffNavigation = diff.locator('.diff-mobile-navigation');
-  const diffUtilities = diff.locator('.diff-mobile-utilities');
   for (const name of ['上一个文件', '下一个文件', '上一个差异', '下一个差异']) {
-    await expect(diffNavigation.getByRole('button', { name })).toBeVisible();
+    await expect(diffActions.getByRole('button', { name })).toBeVisible();
   }
-  const [navigationBounds, utilityBounds] = await Promise.all([
-    diffNavigation.boundingBox(),
-    diffUtilities.boundingBox()
-  ]);
-  expect((navigationBounds?.y ?? Infinity) + (navigationBounds?.height ?? 0)).toBeLessThanOrEqual(
-    utilityBounds?.y ?? 0
-  );
-  await expect(diffUtilities.getByRole('button', { name: '下载 Diff' })).toBeVisible();
-  await diff.getByRole('button', { name: '收起文件预览快捷操作' }).click();
-  await expect(diff.locator('.workspace-floating-actions-body')).toHaveAttribute(
-    'aria-hidden',
-    'true'
-  );
-  await diff.getByRole('button', { name: '展开文件预览快捷操作' }).click();
-  await expect(diff.locator('.workspace-floating-actions-body')).toHaveAttribute(
-    'aria-hidden',
-    'false'
-  );
-  await diffUtilities.getByRole('button', { name: '文件内查找' }).click();
+  await diffActions.getByRole('button', { name: '收起文件工具栏' }).click();
+  await expect(diffActions.getByRole('button')).toHaveCount(1);
+  await diffActions.getByRole('button', { name: '展开文件工具栏' }).click();
+  await diffActions.getByRole('button', { name: '更多文件操作' }).click();
+  await expect(diffActions.getByRole('menuitem', { name: '下载 Diff' })).toBeVisible();
+  await diffActions.getByRole('menuitem', { name: '文件内查找' }).click();
   await expect(diff.getByRole('search', { name: '文件内查找' })).toBeVisible();
-  await diff.getByRole('button', { name: '收起文件预览快捷操作' }).click();
   await diff.getByRole('button', { name: '关闭查找' }).click();
   await expect(diff.getByRole('button', { name: '关闭预览', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();

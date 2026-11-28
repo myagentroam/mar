@@ -106,7 +106,7 @@ describe('Web theme preference', () => {
     const global = sharedStyles();
     for (const selector of [
       '.file-preview-header',
-      '.mobile-preview-actions',
+      '.workspace-file-mobile-actions',
       '.conversation-header'
     ])
       expect(global).not.toContain(selector);

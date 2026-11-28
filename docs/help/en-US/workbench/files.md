@@ -1,6 +1,6 @@
 ---
 title: Browse, Search, and Manage Files
-lastUpdated: 2026-11-23
+lastUpdated: 2026-11-28
 ---
 
 # Browse, Search, and Manage Files
@@ -56,4 +56,6 @@ Image files open fitted to the window without changing their aspect ratio. On de
 
 File operations act on the real Node directory. There is no hidden recycle bin. Check Git Changes or create a backup before renaming, moving, overwriting, or deleting. Next: [Git Changes and Diff](git-changes.md).
 
-After selecting file or Diff text, use that menu to [add a quote](file-reference-and-attachment.md#quote-a-selected-excerpt). Select all covers only the currently loaded document; it does not quote automatically or read other files. The mobile bottom toolbar provides direct actions without a More button; text selection and content context menus are unchanged.
+On mobile, the file toolbar is at the bottom right and starts expanded. Tap the double chevrons at the far right to collapse it, and tap again to expand it. Tap frequently used actions directly and open **More file actions (⋯)** for the rest. For example, the Diff toolbar moves between files or changes, while opening the source file, finding text, and downloading are in the menu. A preview with only one action shows that button without a menu or collapse control.
+
+After selecting file or Diff text, use the content context menu to [add a quote](file-reference-and-attachment.md#quote-a-selected-excerpt). Select all covers only the currently loaded document; it does not quote automatically or read other files.

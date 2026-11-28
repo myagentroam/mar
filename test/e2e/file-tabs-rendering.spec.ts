@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -112,15 +113,22 @@ for (const theme of ['daylight', 'dark']) {
       try {
         await page.setViewportSize({ width, height: 900 });
         const toolbar =
-          width >= 768 ? '.file-preview-desktop-actions' : '.workspace-floating-actions-body';
+          width >= 768 ? '.file-preview-desktop-actions' : '.workspace-file-mobile-actions';
         for (const kind of ['text', 'video']) {
           await page.goto(`${fixture.url}file-tabs.html?toolbar-loading=${kind}&theme=${theme}`);
           await expect(page.locator(`#toolbar-${kind}`)).toBeVisible();
           const actions = page.locator(`#toolbar-${kind} ${toolbar}`);
-          const download = actions.getByRole('button', { name: 'Download file', exact: true });
+          const inMenu = kind === 'text' && width < 768;
+          const more = actions.getByRole('button', { name: 'More file actions' });
+          if (inMenu) await more.click();
+          const download = actions.getByRole(inMenu ? 'menuitem' : 'button', {
+            name: 'Download file',
+            exact: true
+          });
           const before = (await download.boundingBox())!;
           await expect(download.locator('[data-mar-icon="download"]')).toHaveCount(1);
           await download.click();
+          if (inMenu) await more.click();
           await expect(download).toBeDisabled();
           await expect(download.locator('[data-mar-icon]')).toHaveCount(1);
           await expect(download.locator('[data-mar-icon="loading-action"]')).toBeVisible();
@@ -131,9 +139,11 @@ for (const theme of ['daylight', 'dark']) {
             await captureScreenshot(page, `download-loading-${theme}-${width}.png`);
           }
           await page.locator('#finish-toolbar-download').click();
+          if (inMenu) await more.click();
           await expect(download).toBeEnabled();
           await expect(download.locator('[data-mar-icon="download"]')).toHaveCount(1);
           await expect(download.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+          if (inMenu) await page.keyboard.press('Escape');
           if (kind === 'text') {
             const editor = page.locator('#toolbar-text .cm-content');
             if (!(await editor.isEditable())) {
@@ -347,7 +357,12 @@ for (const width of [1280, 390]) {
       await page.keyboard.press('Control+End');
       await page.keyboard.type(' draft');
       await expect(editor).toContainText('draft');
-      await page.getByRole('button', { name: 'Run HTML preview' }).first().click();
+      if (width < 768) {
+        await page.getByRole('button', { name: 'More file actions' }).click();
+        await page.getByRole('menuitem', { name: /Run HTML preview.*saved version/u }).click();
+      } else {
+        await page.getByRole('button', { name: 'Run HTML preview' }).click();
+      }
       await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
       // Unload protection belongs to the page controller and is covered by its composition tests.
       await expect(
@@ -841,7 +856,7 @@ for (const source of ['workspace', 'parent', 'unknown'] as const) {
           nodeId: 'node',
           path: 'packages/child/src/main.ts',
           content: 'export const value = 2;',
-          expectedRevision: 'r1'
+          expectedRevision: createHash('sha256').update('export const value = 1;').digest('hex')
         }
       ]);
     } finally {

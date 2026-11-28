@@ -532,6 +532,22 @@ describe('File preview window interaction', () => {
     expect(f.closeWindow).toHaveBeenCalledOnce();
   });
 
+  it('lets the focused dropdown consume Escape before the file window', () => {
+    const f = fixture(false, false, true);
+    const menu = {
+      nodeType: 1,
+      matches: (selector: string) => selector.includes('.mar-ui-dropdown__popup')
+    };
+    const menuEscape = keyEvent('Escape', {
+      composedPath: () => [menu, f.ownOverlayElement] as unknown as EventTarget[]
+    });
+    f.service.handleEscape(menuEscape);
+    expect(f.closeWindow).not.toHaveBeenCalled();
+    expect(menuEscape.preventDefault).not.toHaveBeenCalled();
+    f.service.handleEscape(keyEvent('Escape'));
+    expect(f.closeWindow).toHaveBeenCalledOnce();
+  });
+
   it('ignores retained hidden dialogs and consumes a frame close key with cleanup', async () => {
     const f = fixture();
     const documentListeners = new Map<string, (event: KeyboardEvent) => void>();

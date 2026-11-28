@@ -102,6 +102,35 @@
   }
 }
 
+/* Persistent popups can fade out in place without remaining interactive. */
+@supports (overlay: auto) and (transition-behavior: allow-discrete) {
+  @media (prefers-reduced-motion: no-preference) {
+    .mar-ui-popup.mar-ui-popup--animated-exit[popover] {
+      transition:
+        opacity 130ms ease-out,
+        translate 130ms ease-out,
+        display 130ms,
+        overlay 130ms;
+      transition-behavior: allow-discrete;
+    }
+
+    .mar-ui-popup.mar-ui-popup--animated-exit[popover]:not(:popover-open, [data-open]) {
+      opacity: 0;
+      translate: 0 var(--mar-ui-popup-entry-y, -4px);
+      pointer-events: none;
+    }
+  }
+}
+
+/* Keep the manual popover in the top layer while its fallback exit runs. */
+@media (prefers-reduced-motion: no-preference) {
+  .mar-ui-popup.mar-ui-popup--animated-exit[data-closing] {
+    opacity: 0;
+    translate: 0 var(--mar-ui-popup-entry-y, -4px);
+    pointer-events: none;
+  }
+}
+
 /* Retain the basic positioned surface on browsers without the top layer API. */
 @supports not selector(:popover-open) {
   .mar-ui-popup {

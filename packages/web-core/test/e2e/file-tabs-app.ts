@@ -93,6 +93,7 @@ const git = createWorkspaceGitService({
   onBranch: () => {}
 });
 const changesOpen = ref(false);
+const fixtureFileAccess = createFileAccessFixture({ http, transfers: () => ({}) });
 const fileWorkbench: ReturnType<typeof createWorkspaceFileWorkbenchController> =
   createWorkspaceFileWorkbenchController({
     externalTarget: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
@@ -106,7 +107,34 @@ const fileWorkbench: ReturnType<typeof createWorkspaceFileWorkbenchController> =
     onRevealFailure: () => {},
     comparison: async () => undefined,
     page: () => filePage,
-    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    access(target) {
+      const access = fixtureFileAccess(target);
+      // This browser fixture exercises the preview, not transport. Adapt its routed file data
+      // to the byte/object ports now required by the preview service.
+      return {
+        ...access,
+        async readPreviewRange(file, limit, _identity, signal) {
+          const mocked = (await access.read(file, limit, signal)) as {
+            file: { content: string; size: number; revision: string; nextOffset: number | null };
+          };
+          const bytes = new TextEncoder().encode(mocked.file.content);
+          const size = mocked.file.nextOffset === null ? bytes.length : mocked.file.size;
+          return {
+            bytes,
+            size,
+            revision: mocked.file.revision,
+            offset: 0,
+            nextOffset: mocked.file.nextOffset
+          };
+        },
+        async readPreviewObject(file, signal) {
+          const response = await access.fetchFile(file, { signal });
+          if (!response.ok) throw new Error('FILE_PREVIEW_FIXTURE_READ_FAILED');
+          const blob = await response.blob();
+          return { size: blob.size, revision: 'fixture-object', url: URL.createObjectURL(blob) };
+        }
+      };
+    },
     preview: { onWritten: () => {} },
     navigation: {
       http,

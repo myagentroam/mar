@@ -7,6 +7,7 @@ import {
 import './file-tooltip-trigger.css';
 import '../../styles/code-syntax-theme.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { selectedTextOffsets, unifiedDiffLines } from '../../util/quote-selection.js';
@@ -730,7 +731,6 @@ defineExpose({
     :source-label="
       translate(props.source === 'TOOL_CHANGE' ? 'presentation.thisChange' : 'common.gitDiff')
     "
-    mobile-actions-layout="stacked"
     :mobile-actions-label="translate('generated.gitDiffViewer.diffPreviewActions')"
     :aria-label="`${path} ${translate(props.source === 'TOOL_CHANGE' ? 'presentation.thisChange' : 'common.gitDiff')}`"
     @contextmenu.self="openPreviewMenu"
@@ -758,102 +758,83 @@ defineExpose({
       </div>
     </template>
     <template #mobile-actions>
-      <div class="diff-mobile-action-row diff-mobile-navigation">
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="
-            shortcutTooltip(
-              translate('generated.gitDiffViewer.previousFile'),
-              paths.length > 1 && !loading ? [diffNavigationKeys[0]] : []
-            )
-          "
-          circle
-          :disabled="props.paths.length < 2 || props.loading"
-          :aria-label="translate('generated.gitDiffViewer.previousFile')"
-          @click="emit('moveFile', -1)"
-          ><MarIcon name="chevron-left"
-        /></MarButton>
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="
-            shortcutTooltip(
-              translate('generated.gitDiffViewer.previousChange'),
-              hunks.length > 0 ? [diffNavigationKeys[2]] : []
-            )
-          "
-          circle
-          :disabled="hunks.length === 0"
-          :aria-label="translate('generated.gitDiffViewer.previousChange')"
-          @click="moveDiff(-1)"
-          ><MarIcon name="chevron-up"
-        /></MarButton>
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="
-            shortcutTooltip(
-              translate('generated.gitDiffViewer.nextChange'),
-              hunks.length > 0 ? [diffNavigationKeys[3]] : []
-            )
-          "
-          circle
-          :disabled="hunks.length === 0"
-          :aria-label="translate('generated.gitDiffViewer.nextChange')"
-          @click="moveDiff(1)"
-          ><MarIcon name="chevron-down"
-        /></MarButton>
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="
-            shortcutTooltip(
-              translate('generated.gitDiffViewer.nextFile'),
-              paths.length > 1 && !loading ? [diffNavigationKeys[1]] : []
-            )
-          "
-          circle
-          :disabled="props.paths.length < 2 || props.loading"
-          :aria-label="translate('generated.gitDiffViewer.nextFile')"
-          @click="emit('moveFile', 1)"
-          ><MarIcon name="chevron-right"
-        /></MarButton>
-      </div>
-      <div class="diff-mobile-action-row diff-mobile-utilities">
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="shortcutTooltip(translate('fileEditor.openSource'), fileKeys.toggleEdit)"
-          circle
-          :aria-label="translate('fileEditor.openSource')"
-          @click="toggleEdit"
-          ><MarIcon name="source-code"
-        /></MarButton>
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="shortcutTooltip(translate('inlineFind.label'), fileKeys.find)"
-          v-if="findAvailable"
-          circle
-          :aria-label="translate('inlineFind.label')"
-          @click="openInternalFind"
-          ><MarIcon name="search"
-        /></MarButton>
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.downloadDiff')"
-          :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
-          circle
-          @click="emit('download')"
-        >
-          <MarIcon name="download" />
-        </MarButton>
-        <MarButton
-          class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview2')"
-          v-if="!embedded"
-          :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
-          circle
-          @click="emit('close')"
-        >
-          <MarIcon name="close" />
-        </MarButton>
-      </div>
+      <MarButton
+        class="mar-icon-action"
+        text
+        v-tooltip="
+          shortcutTooltip(
+            translate('generated.gitDiffViewer.previousFile'),
+            paths.length > 1 && !loading ? [diffNavigationKeys[0]] : []
+          )
+        "
+        :disabled="props.paths.length < 2 || props.loading"
+        :aria-label="translate('generated.gitDiffViewer.previousFile')"
+        @click="emit('moveFile', -1)"
+        ><MarIcon name="chevron-left"
+      /></MarButton>
+      <MarButton
+        class="mar-icon-action"
+        text
+        v-tooltip="
+          shortcutTooltip(
+            translate('generated.gitDiffViewer.previousChange'),
+            hunks.length > 0 ? [diffNavigationKeys[2]] : []
+          )
+        "
+        :disabled="hunks.length === 0"
+        :aria-label="translate('generated.gitDiffViewer.previousChange')"
+        @click="moveDiff(-1)"
+        ><MarIcon name="chevron-up"
+      /></MarButton>
+      <MarButton
+        class="mar-icon-action"
+        text
+        v-tooltip="
+          shortcutTooltip(
+            translate('generated.gitDiffViewer.nextChange'),
+            hunks.length > 0 ? [diffNavigationKeys[3]] : []
+          )
+        "
+        :disabled="hunks.length === 0"
+        :aria-label="translate('generated.gitDiffViewer.nextChange')"
+        @click="moveDiff(1)"
+        ><MarIcon name="chevron-down"
+      /></MarButton>
+      <MarButton
+        class="mar-icon-action"
+        text
+        v-tooltip="
+          shortcutTooltip(
+            translate('generated.gitDiffViewer.nextFile'),
+            paths.length > 1 && !loading ? [diffNavigationKeys[1]] : []
+          )
+        "
+        :disabled="props.paths.length < 2 || props.loading"
+        :aria-label="translate('generated.gitDiffViewer.nextFile')"
+        @click="emit('moveFile', 1)"
+        ><MarIcon name="chevron-right"
+      /></MarButton>
+    </template>
+    <template #mobile-menu>
+      <MarDropdownItem icon="source-code" @click="toggleEdit">
+        {{ translate('fileEditor.openSource') }}
+      </MarDropdownItem>
+      <MarDropdownItem v-if="findAvailable" icon="search" @click="openInternalFind">
+        {{ translate('inlineFind.label') }}
+      </MarDropdownItem>
+      <MarDropdownItem icon="download" @click="emit('download')">
+        {{ translate('generated.gitDiffViewer.downloadDiff') }}
+      </MarDropdownItem>
+    </template>
+    <template v-if="!embedded" #mobile-header-actions>
+      <MarButton
+        class="mar-icon-action"
+        v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview2')"
+        :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
+        icon="close"
+        text
+        @click="emit('close')"
+      />
     </template>
     <template #primary-actions>
       <div
@@ -1339,18 +1320,6 @@ defineExpose({
   }
   .diff-minimap {
     width: 4rem;
-  }
-  .diff-mobile-action-row {
-    display: flex;
-    gap: 0.35rem;
-    justify-content: flex-end;
-  }
-  .diff-mobile-action-row + .diff-mobile-action-row {
-    border-top: 1px solid var(--mar-border-medium);
-    padding-top: 0.25rem;
-  }
-  .diff-mobile-action-row :deep(.mar-ui-button + .mar-ui-button) {
-    margin-left: 0;
   }
 }
 </style>
