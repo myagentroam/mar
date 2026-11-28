@@ -43,7 +43,7 @@ export const codeModeToolDefinition: ClientToolDefinition = {
   name: 'code_exec',
   description: `Run JavaScript with programmatic tools.
 - Evaluates source in a fresh restricted ECMAScript runtime with top-level await. It is not Node.js or a browser. JavaScript globals do not survive between cells; bounded JSON state is available through state.
-- When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. The source itself is raw JavaScript, not a JSON wrapper, quoted string, or markdown code fence.
+- When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. JSON input example: \`{"code":"observe.text(1);"}\`. The source itself is raw JavaScript, not a JSON wrapper, quoted string, or markdown code fence.
 - Provides standard ECMAScript built-ins and frozen tools, observe, state and cell bindings. Module imports, filesystem and network APIs are unavailable in the guest.
 
 Tool calls:
