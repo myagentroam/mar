@@ -136,7 +136,9 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('References to these tool names');
     expect(prompt).toContain('either permitted entry point; direct-only controls remain direct');
     expect(prompt).not.toContain('Use code_exec even for one of these tools');
-    expect(prompt).toContain('tool descriptions and schemas');
+    expect(prompt).toContain(
+      'Use the tool descriptions and schemas for calling conventions, limits, results, and recovery. Code Mode Only:'
+    );
     expect(prompt).not.toContain('call skill before generic tools');
     expect(prompt).not.toContain('# Subagents');
     expect(prompt).not.toContain('do not make a single-step plan');
@@ -237,7 +239,6 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('Shell: sh (/bin/sh)');
     expect(prompt).not.toContain('rg 15.1.0');
     expect(normalized).toContain('tool descriptions and schemas');
-    expect(normalized).toContain('dependencies and side effects');
     expect(normalized).not.toContain('only for what its result actually proves');
     expect(normalized).not.toContain('use bounded waits rather than busy polling');
     expect(normalized).toContain('tools execute without per-call agent approval');
@@ -321,7 +322,7 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('resolve pending work needed for this task');
     expect(normalized).not.toContain('terminal caches need no cleanup');
     expect(normalized).not.toContain('# output and communication style');
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.85');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.86');
   });
 
   it('adds the reasoning guidance only when Thought is directly available', () => {
@@ -429,7 +430,7 @@ describe('system prompt', () => {
     ).toEqual(['core:safety']);
   });
 
-  it('leaves investigation and editing strategy to the model and applicable instructions', () => {
+  it('leaves tool use and editing strategy to the model and applicable instructions', () => {
     const promptFor = (tools: string[]) =>
       buildSystemPrompt({
         mode: 'run',
@@ -442,7 +443,9 @@ describe('system prompt', () => {
       ['read', 'apply_patch']
     ]) {
       const prompt = promptFor(tools);
-      expect(prompt).toContain('dependencies and side effects');
+      expect(prompt).not.toContain(
+        'respect dependencies and side effects when combining operations'
+      );
       expect(prompt).not.toContain('locate relevant symbols, headings, or files before reading');
       expect(prompt).not.toContain('batch independent lookups and already-decided commands');
       expect(prompt).not.toContain('use scripts for mechanical substitutions');

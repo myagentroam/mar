@@ -7,7 +7,7 @@ export function toolUsagePrompt(
   const names = new Set(tools);
   const clauses = [
     `# Tools and execution\nAvailable client tools: ${directTools.join(', ')}.`,
-    'Use the tool descriptions and schemas for calling conventions, limits, results, and recovery. Respect dependencies and side effects when combining operations.'
+    'Use the tool descriptions and schemas for calling conventions, limits, results, and recovery.'
   ];
 
   if (names.has('code_exec')) {
