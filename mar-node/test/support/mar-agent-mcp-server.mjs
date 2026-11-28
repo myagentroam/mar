@@ -80,4 +80,11 @@ server.registerTool(
     };
   }
 );
+if (process.env['MAR_TEST_MCP_STDERR_BURST'] === '1') {
+  await new Promise((resolve, reject) => {
+    process.stderr.write(Buffer.alloc(1024 * 1024, 120), (error) =>
+      error ? reject(error) : resolve()
+    );
+  });
+}
 await server.connect(new StdioServerTransport());

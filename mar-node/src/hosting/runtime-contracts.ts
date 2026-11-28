@@ -68,6 +68,8 @@ export interface HostedConversationRuntimeRollbackInput extends HostedConversati
 }
 
 export interface HostedConversationRuntimeRunInput {
+  /** Cancels preparation before the SDK Execution takes over. */
+  readonly signal?: AbortSignal;
   readonly searchBackendAvailable?: boolean;
   readonly onModelUsage?: import('@myagentroam/agent').ModelUsageObserver;
   readonly compact?: unknown;

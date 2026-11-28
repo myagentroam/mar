@@ -813,14 +813,17 @@ export class HostedConversationNodeService {
       input.conversationId
     );
     this.assertTemplateContext(payload, conversation);
-    if (this.cleanupLocks.has(conversation.id))
-      throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
+    const assertNotDeleting = () => {
+      if (this.cleanupLocks.has(conversation.id))
+        throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
+    };
+    assertNotDeleting();
     if (this.historyMutations.has(conversation.id))
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     if (conversation.status !== 'ACTIVE') throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     if (this.runs.current(conversation.id) || this.runs.settlement(conversation.id))
       throw new Error('HOSTED_CONVERSATION_RUN_ACTIVE');
-    return this.runs.startMessage(payload, input, conversation, steerPrompt);
+    return this.runs.startMessage(payload, input, conversation, assertNotDeleting, steerPrompt);
   }
 
   private rollback(raw: unknown): Promise<unknown> {
@@ -935,9 +938,7 @@ export class HostedConversationNodeService {
       payload.userId,
       input.conversationId
     );
-    const handle = this.runs.current(input.conversationId);
-    if (handle === undefined) return { interrupted: false };
-    return { interrupted: this.runs.interruptActiveRun(payload.userId, conversation, handle) };
+    return { interrupted: this.runs.interruptRun(payload.userId, conversation) };
   }
 
   private switchTemplate(raw: unknown): Promise<unknown> {
@@ -1264,12 +1265,8 @@ export class HostedConversationNodeService {
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     this.cleanupLocks.add(conversation.id);
     try {
+      this.runs.interruptRun(payload.userId, conversation);
       await this.waitForPendingMessageStarts(conversation.id);
-      const handle = this.runs.current(conversation.id);
-      if (handle !== undefined) {
-        this.runs.markInterruption(conversation.id, handle.run.id);
-        if (!handle.cancel()) this.runs.clearInterruption(conversation.id, handle.run.id);
-      }
       await this.waitForFileWrites(conversation.id);
       await this.hostedUploads.cancelConversationUploads(payload.userId, conversation.id);
       const paths = this.options.store.pathsForConversation(payload.userId, conversation.id);

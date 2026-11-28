@@ -68,40 +68,46 @@ describe('Hosted Conversation Run ownership', () => {
     expect(runs.busy('conversation')).toBe(false);
   });
 
-  it('joins pending admissions and preserves cancellation intent by Run', async () => {
-    const runs = new HostedConversationRuns({
-      store: {} as never,
-      hostedWatch: {} as never,
-      now: Date.now,
-      nodeId: () => 'node',
-      publishWorkbenchEvent: () => undefined,
-      uploads: {} as never,
-      runtime: {} as never,
-      templates: {} as never,
-      secretEnvironment: undefined,
-      modelUsage: undefined
-    });
-    let release!: () => void;
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    runs.acceptMessage('conversation\0message', pending);
-    const active = handle('run');
-    runs.accept('conversation', active);
-    const closing = runs.close();
-    expect(active.cancel).toHaveBeenCalledOnce();
-    expect(active.cancel).toHaveBeenCalledWith('shutdown');
-    expect(runs.expectsInterruption('conversation', 'run')).toBe(true);
-    let joined = false;
-    const wait = runs.waitForAdmissions('conversation').then(() => {
-      joined = true;
-    });
-    await Promise.resolve();
-    expect(joined).toBe(false);
-    release();
-    await wait;
-    await closing;
-    expect(joined).toBe(true);
-    expect(runs.hasPending('conversation')).toBe(false);
-  });
+  it.each([false, true])(
+    'joins pending admissions and preserves cancellation intent by Run (already stopping: %s)',
+    async (alreadyStopping) => {
+      const runs = new HostedConversationRuns({
+        store: {} as never,
+        hostedWatch: {} as never,
+        now: Date.now,
+        nodeId: () => 'node',
+        publishWorkbenchEvent: () => undefined,
+        uploads: {} as never,
+        runtime: {} as never,
+        templates: {} as never,
+        secretEnvironment: undefined,
+        modelUsage: undefined
+      });
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      runs.acceptMessage('conversation\0message', pending);
+      const active = alreadyStopping
+        ? { ...handle('run'), cancel: vi.fn(() => false) }
+        : handle('run');
+      runs.accept('conversation', active);
+      if (alreadyStopping) runs.markInterruption('conversation', active.run.id);
+      const closing = runs.close();
+      expect(active.cancel).toHaveBeenCalledOnce();
+      expect(active.cancel).toHaveBeenCalledWith('shutdown');
+      expect(runs.expectsInterruption('conversation', 'run')).toBe(true);
+      let joined = false;
+      const wait = runs.waitForAdmissions('conversation').then(() => {
+        joined = true;
+      });
+      await Promise.resolve();
+      expect(joined).toBe(false);
+      release();
+      await wait;
+      await closing;
+      expect(joined).toBe(true);
+      expect(runs.hasPending('conversation')).toBe(false);
+    }
+  );
 });

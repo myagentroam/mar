@@ -1,4 +1,5 @@
 import { mkdir } from 'node:fs/promises';
+import { AgentError } from '@myagentroam/agent';
 import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
 import type { ResolvedMcpServer } from '../mcp/model.js';
 import {
@@ -82,7 +83,22 @@ interface HostedConversationRunsOptions {
     | undefined;
 }
 
-/** Owns accepted Hosted Runs, message admissions, settlements and interruption intent. */
+interface StartingRun {
+  readonly controller: AbortController;
+  handle?: HostedConversationRuntimeHandle;
+}
+
+function abortStartup(startup: StartingRun): void {
+  if (!startup.controller.signal.aborted)
+    startup.controller.abort(
+      new AgentError(
+        'HOSTED_CONVERSATION_START_CANCELLED',
+        'Hosted conversation startup was cancelled.'
+      )
+    );
+}
+
+/** Owns Hosted Run preparation, message admission, settlements and interruption intent. */
 export class HostedConversationRuns {
   private readonly activities = new Map<string, HostedConversationActivity>();
   constructor(private readonly options: HostedConversationRunsOptions) {}
@@ -151,6 +167,7 @@ export class HostedConversationRuns {
     },
     input: ReturnType<typeof hostedConversationMessageInputSchema.parse>,
     conversation: HostedConversationManifest,
+    assertRuntimeAdmission: () => void,
     steerPrompt?: string
   ): Promise<unknown> {
     const temporaryTitle = sessionTitleFromFirstMessage(input.prompt);
@@ -222,15 +239,19 @@ export class HostedConversationRuns {
       generatedImagesLogicalPath,
       temporaryDirectory
     );
+    if (this.closed) throw new Error('CONVERSATION_HOSTING_UNAVAILABLE');
+    // Preparation can yield to deletion; do not start after the delete path checks for a Run.
+    assertRuntimeAdmission();
     const runtimeEvents = this.runtimeEvents(conversation.id);
     let handle: HostedConversationRuntimeHandle;
-    let activityPublished = false;
+    const startup: StartingRun = { controller: new AbortController() };
     try {
       const runInput: HostedConversationRuntimeRunInput = {
         ...(payload.usageGrant === undefined || this.options.modelUsage === undefined
           ? {}
           : { onModelUsage: (usage) => this.options.modelUsage!(payload.usageGrant!, usage) }),
         conversationId: conversation.id,
+        signal: startup.controller.signal,
         sessionId: conversation.sessionId,
         clientMessageId: input.clientMessageId,
         userPrompt: input.prompt,
@@ -262,12 +283,15 @@ export class HostedConversationRuns {
         webAccess: version.draft.networkMode !== 'NONE',
         onEvent: runtimeEvents.emit
       };
-      activityPublished = true;
+      // Stop can arrive as soon as the activity is published, before the SDK owns an Execution.
+      this.startingRuns.set(conversation.id, startup);
       this.publishActivity(payload.userId, conversation, 'RUNNING', this.options.now());
       handle = await this.options.runtime.startRun(runInput);
+      startup.handle = handle;
     } catch (error) {
-      if (activityPublished)
+      if (this.startingRuns.delete(conversation.id))
         this.publishActivity(payload.userId, conversation, 'IDLE', this.options.now());
+      startup.controller.signal.throwIfAborted();
       if (upgrade !== undefined) {
         this.publishUpgradeFailure(
           conversation,
@@ -286,6 +310,14 @@ export class HostedConversationRuns {
       readonly titleChanged: boolean;
     };
     try {
+      // A native handle can arrive just as preparation is cancelled. It still owns settlement.
+      if (startup.controller.signal.aborted)
+        this.interruptActiveRun(
+          payload.userId,
+          conversation,
+          handle,
+          this.closed ? 'shutdown' : 'interrupt'
+        );
       this.options.store.createMessage({
         conversationId: conversation.id,
         clientMessageId: input.clientMessageId,
@@ -333,6 +365,8 @@ export class HostedConversationRuns {
         } catch {
           // Preserve the original persistence failure.
         }
+      this.startingRuns.delete(conversation.id);
+      this.clearInterruption(conversation.id, handle.run.id);
       this.publishActivity(payload.userId, conversation, 'IDLE', completion.completedAt);
       if (upgrade !== undefined)
         this.publishUpgradeFailure(
@@ -365,6 +399,7 @@ export class HostedConversationRuns {
       titleChanged: accepted.titleChanged,
       events: runtimeEvents
     });
+    this.startingRuns.delete(conversation.id);
     return {
       conversation: this.summary(conversation),
       run: handle.run
@@ -395,10 +430,12 @@ export class HostedConversationRuns {
   }
 
   private readonly pendingMessages = new Map<string, Promise<unknown>>();
+  private readonly startingRuns = new Map<string, StartingRun>();
   private readonly activeRuns = new Map<string, HostedConversationRuntimeHandle>();
   private readonly settlements = new Map<string, Promise<void>>();
   private readonly nativeAdmissions = new Map<HostedConversationRuntimeHandle, Promise<void>>();
   private readonly expectedInterruptions = new Set<string>();
+  private closed = false;
 
   async replaceMessage(
     payload: { readonly userId: number; readonly runtimeScopeId?: string },
@@ -427,6 +464,9 @@ export class HostedConversationRuns {
             this.options.uploads.requireAttachment(payload.userId, conversation.id, fileId)
           )
         );
+        // Stop may be accepted while resolving attachments. Do not dispatch a new steer after it.
+        if (this.expectsInterruption(conversation.id, handle.run.id))
+          throw new Error('HOSTED_CONVERSATION_RUN_ACTIVE');
         result = await handle.steer({
           prompt: input.prompt,
           modelText: attachmentPrompt(steerPrompt, attachments),
@@ -580,21 +620,33 @@ export class HostedConversationRuns {
     return this.expectedInterruptions.has(`${conversationId}\0${runId}`);
   }
 
+  interruptRun(userId: number, conversation: HostedConversationManifest): boolean {
+    const startup = this.startingRuns.get(conversation.id);
+    const handle = this.current(conversation.id) ?? startup?.handle;
+    if (handle !== undefined) return this.interruptActiveRun(userId, conversation, handle);
+    if (startup === undefined || startup.controller.signal.aborted) return false;
+    abortStartup(startup);
+    this.publishActivity(userId, conversation, 'CANCELLING', this.options.now());
+    return true;
+  }
+
   interruptActiveRun(
     userId: number,
     conversation: HostedConversationManifest,
-    handle: HostedConversationRuntimeHandle
+    handle: HostedConversationRuntimeHandle,
+    reason: 'interrupt' | 'shutdown' = 'interrupt'
   ): boolean {
     // A pending steer cannot use the caller's earlier Stop to start a replacement.
     if (this.expectsInterruption(conversation.id, handle.run.id)) return false;
     this.markInterruption(conversation.id, handle.run.id);
     try {
-      const interrupted = handle.cancel();
+      const interrupted = handle.cancel(reason);
       if (!interrupted) {
         this.clearInterruption(conversation.id, handle.run.id);
         return false;
       }
-      this.publishActivity(userId, conversation, 'CANCELLING', this.options.now());
+      if (this.activity(conversation.id).status !== 'CANCELLING')
+        this.publishActivity(userId, conversation, 'CANCELLING', this.options.now());
       return true;
     } catch (error) {
       this.clearInterruption(conversation.id, handle.run.id);
@@ -603,20 +655,29 @@ export class HostedConversationRuns {
   }
 
   cancelAll(cancelled: Set<HostedConversationRuntimeHandle>, errors: unknown[]): void {
-    for (const [conversationId, handle] of this.activeRuns) {
+    const handles = new Map(this.activeRuns);
+    for (const [conversationId, startup] of this.startingRuns) {
+      if (startup.handle === undefined) abortStartup(startup);
+      else handles.set(conversationId, startup.handle);
+    }
+    for (const [conversationId, handle] of handles) {
       if (cancelled.has(handle)) continue;
       cancelled.add(handle);
+      const alreadyStopping = this.expectsInterruption(conversationId, handle.run.id);
       this.markInterruption(conversationId, handle.run.id);
       try {
-        if (!handle.cancel('shutdown')) this.clearInterruption(conversationId, handle.run.id);
+        // Shutdown may still stop title work, but a declined repeat cannot undo an earlier Stop.
+        if (!handle.cancel('shutdown') && !alreadyStopping)
+          this.clearInterruption(conversationId, handle.run.id);
       } catch (error) {
-        this.clearInterruption(conversationId, handle.run.id);
+        if (!alreadyStopping) this.clearInterruption(conversationId, handle.run.id);
         errors.push(error);
       }
     }
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     const cancelled = new Set<HostedConversationRuntimeHandle>();
     const errors: unknown[] = [];
     this.cancelAll(cancelled, errors);

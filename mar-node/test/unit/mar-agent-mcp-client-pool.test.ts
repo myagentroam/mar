@@ -1047,6 +1047,34 @@ describe('MAR Agent MCP client pool', () => {
     }
   });
 
+  it.each(['ordinary', 'hosted'] as const)(
+    'does not block %s stdio MCP initialization on a stderr burst',
+    async (mode) => {
+      const signal = AbortSignal.timeout(2_000);
+      const pool = await MarAgentMcpClientPool.connect(
+        [server({ MAR_TEST_MCP_STDERR_BURST: '1' })],
+        process.cwd(),
+        {
+          signal,
+          ...(mode === 'hosted'
+            ? {
+                processExecutor: directLocalProcessExecutor,
+                owner: { sessionId: 'fixture', executionId: 'fixture' }
+              }
+            : {})
+        }
+      );
+      try {
+        expect(await pool.call('mcp__test_server__echo', { value: 'ready' })).toMatchObject({
+          content: JSON.stringify({ value: 'ready' })
+        });
+      } finally {
+        await pool.close();
+      }
+    },
+    8_000
+  );
+
   it('routes hosted stdio MCP through the injected process executor without reusable pooling', async () => {
     const requests: LocalProcessSpawnRequest[] = [];
     const processExecutor = {
