@@ -81,9 +81,6 @@ const compactShowsOutput = computed(
         {{ translate('toolPresentation.detail.maxHeight') }}: {{ compactDetail.resize.maxHeight }}
       </template>
     </p>
-    <p class="tool-detail-meta">
-      {{ translate('toolPresentation.detail.imageUnavailable') }}
-    </p>
     <p v-if="inputTruncated === true" class="tool-detail-meta">
       {{ translate('presentation.input') }}:
       {{ translate('toolPresentation.detail.truncated') }}

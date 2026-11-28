@@ -249,17 +249,24 @@ describe('independent tool presentation', () => {
     expect(detailOnlyToolText(payload({ kind: 'COMPACT_REQUEST', accepted: true }))).toContain(
       'accepted'
     );
+    const image = payload({
+      kind: 'IMAGE_VIEW',
+      path: 'photo.png',
+      width: 300,
+      height: 200,
+      mimeType: 'image/png'
+    });
+    const imageDetails = [
+      'Tool: native-tool',
+      'Input: Original input',
+      'Path: photo.png',
+      'Format: image/png',
+      'Size: 300 × 200'
+    ];
+    expect(detailOnlyToolText(image)).toBe(imageDetails.join('\n'));
     expect(
-      detailOnlyToolText(
-        payload({
-          kind: 'IMAGE_VIEW',
-          path: 'photo.png',
-          width: 300,
-          height: 200,
-          mimeType: 'image/png'
-        })
-      )
-    ).toContain('300 × 200');
+      detailOnlyToolText({ ...image, errorCode: 'ENOENT', errorMessage: 'Image file not found.' })
+    ).toBe([...imageDetails, 'Error: ENOENT', 'Image file not found.'].join('\n'));
   });
   it('does not repeat structured web search sources as raw output', () => {
     const value = {

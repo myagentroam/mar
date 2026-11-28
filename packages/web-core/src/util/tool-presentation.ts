@@ -353,7 +353,6 @@ export function detailOnlyToolText(payload: Record<string, unknown>): string | u
         `${labels.detail.resize}: ${[resize.maxWidth, resize.maxHeight].filter((n) => n !== undefined).join(' × ')}`
       );
     }
-    lines.push(translate('toolPresentation.detail.imageUnavailable'));
   } else if (value.kind === 'TOOL_SEARCH') {
     field(labels.detail.query, value.query);
     if (value.tools !== undefined)
