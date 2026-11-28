@@ -6,9 +6,12 @@ import { downloadPinnedFile } from './download.js';
 import { runChild } from './owned-preparation.js';
 import { SEARCH_REQUIREMENTS } from './search-requirements.js';
 
-const sourceVersion = '57ff753ad416b7bf27e59d72ae8c7cac93b56be4';
-const sourceDigest = '711ee0c77457ff9af09058e512a43452fd7394b68aab307415674791cc9037b0';
+const previousSourceVersion = '57ff753ad416b7bf27e59d72ae8c7cac93b56be4';
+const sourceVersion = 'd96f0ec9bbb8555bd379334a4adcbd1dc06575d5';
+const sourceDigest = '3e71f4d170a39216f9f4365a376b9ae2792875a546d890488857dbd41f010fda';
+const uvVersion = '0.13.7';
 const uvDigest = 'c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83';
+const pythonVersion = '3.12.12';
 
 /** Only the Linux x64 wheel and Granian combination validated by this release is prepared. */
 export function managedSearchSupported(): boolean {
@@ -26,33 +29,46 @@ export function managedSearchSupported(): boolean {
   );
 }
 
-export function newSearchInstallation(port: number): SearchInstallation {
+export function newSearchInstallation(port: number, reinstall = false): SearchInstallation {
+  const suffix = reinstall ? `-${randomBytes(8).toString('hex')}` : '';
   return {
     version: sourceVersion,
-    uvVersion: '0.13.7',
-    pythonVersion: '3.12.12',
-    directory: 'components/searxng-57ff753ad-linux-x64',
+    uvVersion,
+    pythonVersion,
+    directory: `components/searxng-${sourceVersion.slice(0, 9)}-linux-x64${suffix}`,
     platform: 'linux',
     arch: 'x64',
     port
   };
 }
 
+/** Prepares the current release in its own directory; the caller owns activation. */
 export async function prepareSearchInstallation(
   root: string,
   deploymentId: string,
   installation: SearchInstallation,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  previous?: SearchInstallation
 ): Promise<void> {
-  if (
-    !managedSearchSupported() ||
-    installation.platform !== process.platform ||
-    installation.arch !== process.arch ||
-    installation.version !== sourceVersion ||
-    installation.uvVersion !== '0.13.7' ||
-    installation.pythonVersion !== '3.12.12'
-  )
-    throw new Error('QUICK_START_SEARCH_PLATFORM_UNSUPPORTED');
+  assertSearchPackage(installation);
+  if (installation.version !== sourceVersion)
+    throw new Error('QUICK_START_SEARCH_VERSION_UNSUPPORTED');
+  const target = resolve(root, installation.directory);
+  let replacementSettings: Buffer | string | undefined;
+  if (previous) {
+    assertSearchPackage(previous);
+    const oldTarget = resolve(root, previous.directory);
+    if (oldTarget === target) throw new Error('QUICK_START_SEARCH_COMPONENT_INVALID');
+    try {
+      const settings = join(oldTarget, 'settings.yml');
+      await access(settings);
+      await assertSearchOwner(oldTarget, deploymentId);
+      replacementSettings = await readFile(settings);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      replacementSettings = defaultSearchSettings();
+    }
+  }
   signal?.throwIfAborted();
   try {
     await runChild('tar', ['--version'], process.env, signal, 'QUICK_START_SEARCH_TOOLS_MISSING');
@@ -61,29 +77,28 @@ export async function prepareSearchInstallation(
     signal?.throwIfAborted();
     throw new Error('QUICK_START_SEARCH_TOOLS_MISSING');
   }
-  const target = resolve(root, installation.directory);
   await mkdir(resolve(root, 'components'), { recursive: true, mode: 0o700 });
   try {
     await mkdir(target, { mode: 0o700 });
     await writeFile(join(target, '.owner'), `${deploymentId}\n`, { flag: 'wx', mode: 0o600 });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    if ((await readFile(join(target, '.owner'), 'utf8').catch(() => '')) !== `${deploymentId}\n`)
-      throw new Error('QUICK_START_SEARCH_COMPONENT_NOT_OWNED');
+    await assertSearchOwner(target, deploymentId);
   }
   const marker = join(target, '.mar-installed');
-  try {
-    if ((await readFile(marker, 'utf8')) !== `${sourceVersion}\n`)
-      throw new Error('QUICK_START_SEARCH_COMPONENT_INVALID');
-    await assertSearchInstallation(root, installation);
+  const installed = await readFile(marker, 'utf8').catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  if (installed !== undefined) {
+    if (installed !== `${sourceVersion}\n`) throw new Error('QUICK_START_SEARCH_COMPONENT_INVALID');
+    if (replacementSettings !== undefined) await copySearchSettings(target, replacementSettings);
+    await assertSearchInstallation(root, installation, deploymentId);
     return;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await extractOnce(
     target,
     'uv',
-    'https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-unknown-linux-gnu.tar.gz',
+    `https://github.com/astral-sh/uv/releases/download/${uvVersion}/uv-x86_64-unknown-linux-gnu.tar.gz`,
     uvDigest,
     signal
   );
@@ -96,16 +111,25 @@ export async function prepareSearchInstallation(
   );
   const env = preparationEnvironment(target);
   const uv = join(target, 'uv/uv');
+  // Fetch the pinned CPython build from its release origin without installing user-wide shims.
   await runChild(
     uv,
-    ['python', 'install', '3.12.12', '--no-progress'],
+    [
+      'python',
+      'install',
+      pythonVersion,
+      '--mirror',
+      'https://github.com/astral-sh/python-build-standalone/releases/download',
+      '--no-bin',
+      '--no-progress'
+    ],
     env,
     signal,
     'QUICK_START_SEARCH_INSTALL_FAILED'
   );
   await runChild(
     uv,
-    ['venv', '--allow-existing', '--python', '3.12.12', join(target, 'venv'), '--no-progress'],
+    ['venv', '--allow-existing', '--python', pythonVersion, join(target, 'venv'), '--no-progress'],
     env,
     signal,
     'QUICK_START_SEARCH_INSTALL_FAILED'
@@ -140,46 +164,71 @@ export async function prepareSearchInstallation(
     signal,
     'QUICK_START_SEARCH_INSTALL_FAILED'
   );
-  const settings = join(target, 'settings.yml');
-  try {
-    await writeFile(
-      settings,
-      `use_default_settings: true\nserver:\n  secret_key: "${randomBytes(32).toString('hex')}"\n  limiter: false\n  public_instance: false\nsearch:\n  formats: [html, json]\n`,
-      { flag: 'wx', mode: 0o600 }
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  if (replacementSettings !== undefined) await copySearchSettings(target, replacementSettings);
+  else {
+    try {
+      await writeFile(join(target, 'settings.yml'), defaultSearchSettings(), {
+        flag: 'wx',
+        mode: 0o600
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
   }
   signal?.throwIfAborted();
-  await assertSearchInstallation(root, installation);
+  await assertSearchInstallation(root, installation, deploymentId);
   await writeFile(marker, `${sourceVersion}\n`, { flag: 'wx', mode: 0o600 });
 }
 
 export async function assertSearchInstallation(
   root: string,
   installation: SearchInstallation,
-  deploymentId?: string
+  deploymentId: string
 ): Promise<void> {
+  assertSearchPackage(installation);
   const target = resolve(root, installation.directory);
-  if (
-    !managedSearchSupported() ||
-    installation.platform !== process.platform ||
-    installation.arch !== process.arch ||
-    installation.version !== sourceVersion ||
-    installation.uvVersion !== '0.13.7' ||
-    installation.pythonVersion !== '3.12.12'
-  )
-    throw new Error('QUICK_START_SEARCH_PLATFORM_UNSUPPORTED');
-  if (
-    deploymentId !== undefined &&
-    (await readFile(join(target, '.owner'), 'utf8').catch(() => '')) !== `${deploymentId}\n`
-  )
-    throw new Error('QUICK_START_SEARCH_COMPONENT_NOT_OWNED');
+  await assertSearchOwner(target, deploymentId);
   await Promise.all(
     ['venv/bin/python', 'searx/searx/webapp.py', 'settings.yml'].map((path) =>
       access(join(target, path))
     )
   );
+}
+
+function assertSearchPackage(installation: SearchInstallation): void {
+  if (
+    !managedSearchSupported() ||
+    installation.platform !== process.platform ||
+    installation.arch !== process.arch
+  )
+    throw new Error('QUICK_START_SEARCH_PLATFORM_UNSUPPORTED');
+  if (
+    (installation.version !== sourceVersion && installation.version !== previousSourceVersion) ||
+    installation.uvVersion !== uvVersion ||
+    installation.pythonVersion !== pythonVersion
+  )
+    throw new Error('QUICK_START_SEARCH_VERSION_UNSUPPORTED');
+}
+
+async function assertSearchOwner(target: string, deploymentId: string): Promise<void> {
+  if ((await readFile(join(target, '.owner'), 'utf8').catch(() => '')) !== `${deploymentId}\n`)
+    throw new Error('QUICK_START_SEARCH_COMPONENT_NOT_OWNED');
+}
+
+function defaultSearchSettings(): string {
+  return `use_default_settings: true\nserver:\n  secret_key: "${randomBytes(32).toString('hex')}"\n  limiter: false\n  public_instance: false\nsearch:\n  formats: [html, json]\n`;
+}
+
+async function copySearchSettings(target: string, settings: Buffer | string): Promise<void> {
+  // Refresh the private candidate on retry, even if it had settings from an older attempt.
+  const temporary = join(target, `.settings-${randomBytes(12).toString('hex')}`);
+  await writeFile(temporary, settings, { flag: 'wx', mode: 0o600 });
+  try {
+    await rename(temporary, join(target, 'settings.yml'));
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
 }
 
 function preparationEnvironment(target: string): NodeJS.ProcessEnv {

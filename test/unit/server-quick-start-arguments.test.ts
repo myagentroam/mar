@@ -13,6 +13,13 @@ describe('Quick Start arguments', () => {
       command: 'run',
       config: 'path with spaces/server.json'
     });
+    expect(
+      parseQuickStartArguments(['setup', '--reinstall-searxng', '--config', 'custom.json'])
+    ).toEqual({
+      command: 'setup',
+      config: 'custom.json',
+      reinstallSearxng: true
+    });
   });
 
   it('provides help without selecting a setup action', () => {
@@ -24,11 +31,15 @@ describe('Quick Start arguments', () => {
     [],
     ['other'],
     ['run', '--no-node'],
+    ['run', '--reinstall-searxng'],
     ['setup', '--unknown'],
     ['setup', '--config'],
     ['setup', '--config', ''],
     ['setup', '--config', 'a', '--config', 'b'],
     ['setup', '--no-node', '--no-node'],
+    ['setup', '--reinstall-searxng', '--reinstall-searxng'],
+    ['setup', '--reinstall-searxng', '--no-searxng'],
+    ['setup', '--no-node', '--reinstall-searxng'],
     ['setup', '--help', '--unknown']
   ])('rejects invalid input before any setup: %j', (...args) => {
     expect(() => parseQuickStartArguments(args)).toThrow();

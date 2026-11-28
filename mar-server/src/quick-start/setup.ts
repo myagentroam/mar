@@ -5,6 +5,7 @@ import type { QuickStartArguments } from './arguments.js';
 import { createLocalApplication } from './application.js';
 import {
   createQuickStartConfig,
+  type QuickStartConfig,
   readQuickStartConfig,
   resolveQuickStartConfigPath,
   selectQuickStartComponents,
@@ -21,10 +22,12 @@ import {
 import { startManagedSearch } from './search-runtime.js';
 import { searchSetupFailureCode } from './search-errors.js';
 
+/** Owns Quick Start's deployment lock and orchestration; component modules own their processes. */
 export async function setupQuickStart(
   args: Extract<QuickStartArguments, { command: 'setup' | 'run' }>
 ): Promise<void> {
-  if (process.env['MAR_DATABASE_URL']) throw new Error('QUICK_START_EXTERNAL_DATABASE_UNSUPPORTED');
+  if (!args.reinstallSearxng && process.env['MAR_DATABASE_URL'])
+    throw new Error('QUICK_START_EXTERNAL_DATABASE_UNSUPPORTED');
   const path = resolveQuickStartConfigPath(args.config);
   const root = dirname(path);
   const controller = new AbortController();
@@ -37,6 +40,13 @@ export async function setupQuickStart(
     release = await acquireQuickStartLock(root);
     controller.signal.throwIfAborted();
     let config = await readQuickStartConfig(path);
+    if (args.reinstallSearxng) {
+      if (config === undefined) throw new Error('QUICK_START_SETUP_REQUIRED');
+      if (config.search.mode !== 'managed')
+        throw new Error('QUICK_START_SEARCH_REINSTALL_REQUIRES_MANAGED');
+      await setupManagedSearch(root, path, config, controller.signal, true);
+      return;
+    }
     if (config === undefined) {
       const serverPort = await freePort();
       let mysqlPort = await freePort();
@@ -83,43 +93,8 @@ export async function setupQuickStart(
       await mysql.stop();
     }
     controller.signal.throwIfAborted();
-    if (config.search.mode === 'managed') {
-      try {
-        let searchInstallation = config.search.installation;
-        if (!searchInstallation) {
-          let port = await freePort();
-          while (port === config.serverPort || port === config.mysql.port) port = await freePort();
-          searchInstallation = newSearchInstallation(port);
-          config = { ...config, search: { mode: 'managed', installation: searchInstallation } };
-          await writeQuickStartConfig(path, config);
-        }
-        await prepareSearchInstallation(
-          root,
-          config.deploymentId,
-          searchInstallation,
-          controller.signal
-        );
-        const search = await startManagedSearch(root, searchInstallation, config.deploymentId);
-        try {
-          if (!(await search.ready(controller.signal)))
-            throw new Error('QUICK_START_SEARCH_NOT_READY');
-        } finally {
-          await search.stop();
-        }
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          ['QUICK_START_NODE_RECLAIM_FAILED', 'QUICK_START_SEARCH_RECLAIM_FAILED'].includes(
-            error.message
-          )
-        )
-          throw error;
-        controller.signal.throwIfAborted();
-        console.error(
-          cliText('quickManagedSearchFailure', { code: searchSetupFailureCode(error) })
-        );
-      }
-    }
+    if (config.search.mode === 'managed')
+      await setupManagedSearch(root, path, config, controller.signal);
     controller.signal.throwIfAborted();
     console.log(cliText('quickSetupComplete', { path: root }));
   } catch (error) {
@@ -140,6 +115,69 @@ export async function setupQuickStart(
       process.off('SIGINT', cancel);
       process.off('SIGTERM', cancel);
     }
+  }
+}
+
+async function setupManagedSearch(
+  root: string,
+  path: string,
+  config: QuickStartConfig,
+  signal: AbortSignal,
+  reinstall = false
+): Promise<void> {
+  const previous = config.search.installation;
+  let upgrading = false;
+  try {
+    let port = previous?.port;
+    if (port === undefined) {
+      port = await freePort();
+      while (port === config.serverPort || port === config.mysql.port) port = await freePort();
+    }
+    const current = newSearchInstallation(port, reinstall);
+    upgrading = previous !== undefined && previous.version !== current.version;
+    const installation = reinstall || upgrading ? current : (previous ?? current);
+    await prepareSearchInstallation(
+      root,
+      config.deploymentId,
+      installation,
+      signal,
+      installation === previous ? undefined : previous
+    );
+    signal.throwIfAborted();
+    const search = await startManagedSearch(root, installation, config.deploymentId);
+    let ready = false;
+    try {
+      ready = await search.ready(signal);
+      if (!ready) throw new Error('QUICK_START_SEARCH_NOT_READY');
+    } finally {
+      await search.stop({ requireGracefulExit: ready });
+    }
+    // The persisted selection is the activation point. A failed check or stop keeps the old one.
+    if (installation !== previous) {
+      await writeQuickStartConfig(
+        path,
+        { ...config, search: { mode: 'managed', installation } },
+        signal
+      );
+      if (reinstall) console.log(cliText('quickManagedSearchReinstalled'));
+      else if (upgrading) console.log(cliText('quickManagedSearchUpgraded'));
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      ['QUICK_START_NODE_RECLAIM_FAILED', 'QUICK_START_SEARCH_RECLAIM_FAILED'].includes(
+        error.message
+      )
+    )
+      throw error;
+    signal.throwIfAborted();
+    const code = searchSetupFailureCode(error);
+    if (reinstall) throw new Error(code);
+    console.error(
+      cliText(upgrading ? 'quickManagedSearchUpgradeFailure' : 'quickManagedSearchFailure', {
+        code
+      })
+    );
   }
 }
 

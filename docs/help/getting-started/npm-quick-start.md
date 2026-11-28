@@ -1,6 +1,6 @@
 ---
 title: npm 快速开始
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-28
 ---
 
 # npm 快速开始
@@ -46,6 +46,10 @@ run 默认监听 `127.0.0.1`。设置 `MAR_SERVER_HOST` 可调整监听地址，
 Node 随 Server 的精确依赖一起更新，不单独使用节点管理中的推送升级。不要删除部署目录、重建 Node 身份或修改 `allowedRoots` 来完成更新；重复 setup 不是更新 npm 程序的方式。独立 Node 的升级流程见[升级 MyAgentRoam](../deployment/upgrade.md)。
 
 以上步骤更新 Server/Node 的 npm 程序，不会自动升级已有的受管 MySQL 或搜索组件。更新前核对目标版本的发行说明；若要求组件迁移，按该版本说明操作，不要手工删除安装记录来强制重装。
+
+如需升级本地受管搜索，先停止 `run` 并备份 `server.json`，再用同一个配置运行 `npx --no-install mar-server setup`。如果此 npm 版本提供兼容升级，`setup` 会在新目录准备并验证搜索，保留原端口与设置，成功后才切换。失败可直接运行旧搜索或重试 `setup`。如需回退，停止 `run` 后只从备份恢复 `search.installation`；旧组件仍在原目录。外部或已禁用的搜索不会升级。
+
+如需修复本地受管搜索的程序文件，先停止 `run`，再用相同的配置运行 `npx --no-install mar-server setup --reinstall-searxng`。即使已是当前版本，也会在新目录重装；不运行 MySQL 或 Node 的准备流程。重装沿用原端口与设置；原设置文件不存在时使用默认设置。失败会以非零状态退出并保留原安装记录。旧目录不会自动删除。此命令不适用于外部或已禁用的搜索。
 
 ## 登录并开始工作
 

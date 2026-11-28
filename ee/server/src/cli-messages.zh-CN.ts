@@ -1,6 +1,6 @@
 export const cliMessagesZhCN = {
   quickUsage:
-    '用法: mar-server setup [--config 路径] [--no-node] [--no-searxng]\n      mar-server run [--config 路径]',
+    '用法: mar-server setup [--config 路径] [--no-node] [--no-searxng]\n      mar-server setup --reinstall-searxng [--config 路径]\n      mar-server run [--config 路径]',
   quickInvalidArguments: '参数无效，请使用 mar-server --help 查看帮助。',
   quickNetworkInvalid:
     'MAR_PUBLIC_ORIGIN 必须是 HTTP 或 HTTPS Origin，不含账号密码、路径、查询参数或片段（QUICK_START_NETWORK_INVALID）。',
@@ -23,6 +23,10 @@ export const cliMessagesZhCN = {
     '本地搜索不可用，其他组件仍可使用；请重试 setup 或配置外部搜索地址。',
   quickManagedSearchFailure:
     '本地搜索准备失败（{code}），其他组件仍可使用；请重试 setup 或配置外部搜索地址。',
+  quickManagedSearchUpgraded: '本地搜索已升级，旧安装已保留以供回退。',
+  quickManagedSearchReinstalled: '本地搜索已重装。请执行 mar-server run。',
+  quickManagedSearchReinstallRequiresManaged: '仅支持重装本地受管搜索，外部和已禁用的搜索未变更。',
+  quickManagedSearchUpgradeFailure: '本地搜索升级失败（{code}），仍使用原安装记录；请重试 setup。',
   quickFailed: 'Quick Start 失败：{code}。',
   quickReclaimFailed:
     '无法确认受管进程已停止（{code}），部署锁已保留。恢复前请确认本部署的进程均已停止；归属不明确时不要删除锁。',

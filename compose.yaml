@@ -1,6 +1,6 @@
 services:
   searxng:
-    image: searxng/searxng:latest@sha256:5286edb35782454ab8a102c5eff6b54bff745853191b46aeead95f225aa6dfb6
+    image: searxng/searxng:2026.11.28-d96f0ec9b@sha256:cf1291dbfb8f21585ebbaeb2665d5ecd10431c62cbbcf6503301f362a9c3f6db
     environment:
       SEARXNG_BASE_URL: http://searxng:8080/
       SEARXNG_SECRET: ${MAR_SEARXNG_SECRET:?MAR_SEARXNG_SECRET is required}

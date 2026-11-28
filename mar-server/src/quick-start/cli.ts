@@ -33,6 +33,8 @@ async function main(): Promise<void> {
     else if (code === 'QUICK_START_EXTERNAL_DATABASE_UNSUPPORTED')
       console.error(cliText('quickExternalDatabaseUnsupported'));
     else if (code === 'QUICK_START_SETUP_REQUIRED') console.error(cliText('quickSetupRequired'));
+    else if (code === 'QUICK_START_SEARCH_REINSTALL_REQUIRES_MANAGED')
+      console.error(cliText('quickManagedSearchReinstallRequiresManaged'));
     else if (code === 'QUICK_START_NETWORK_INVALID') console.error(cliText('quickNetworkInvalid'));
     else if (code === 'QUICK_START_NODE_NOT_PREPARED')
       console.error(cliText('quickNodeNotPrepared'));
