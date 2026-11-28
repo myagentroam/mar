@@ -1388,8 +1388,7 @@ test('Node environment secrets use default controls, compact layout, and plain-t
     '范围',
     '操作'
   ]);
-  await expect(secretTable.locator('.mar-ui-table__sort')).toHaveCount(3);
-  await secretTable.getByRole('columnheader', { name: '环境变量名' }).getByRole('button').click();
+  await expect(secretTable.getByRole('columnheader').getByRole('button')).toHaveCount(0);
   await expect(details).toContainText('visible-secret');
   await expect(details.getByRole('button', { name: '删除', exact: true })).toBeDisabled();
   await expect(details.getByRole('button', { name: '更新' })).toBeDisabled();

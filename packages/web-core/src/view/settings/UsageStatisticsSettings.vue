@@ -145,30 +145,24 @@ async function refresh(reset = false, purpose?: UsagePurpose): Promise<void> {
     return;
   }
   if (purpose !== undefined) draft.purpose = purpose;
-  if (reset) recordsSorted = false;
   const loaded = await service.load(query(), { reset, rolling: draft.period !== 'custom' });
   if (loaded) {
     expandedRecords.value = [];
-    service.setRecordsInteracting(recordsSorted);
+    service.setRecordsInteracting(false);
   }
 }
 function change(): void {
   form.value?.clearValidate('range');
   if (draft.period !== 'custom' || draft.range) void refresh(true);
 }
-let recordsSorted = false;
 const expandedRecords = ref<string[]>([]);
-function sortChanged({ order }: { order: string | null }): void {
-  recordsSorted = order !== null;
-  service.setRecordsInteracting(recordsSorted || expandedRecords.value.length > 0);
-}
 function expandChanged(
   _row: unknown,
   rows: boolean | { recordId: string; ledgerId?: string }[]
 ): void {
   if (!Array.isArray(rows)) return;
   expandedRecords.value = rows.map(recordKey);
-  service.setRecordsInteracting(recordsSorted || expandedRecords.value.length > 0);
+  service.setRecordsInteracting(expandedRecords.value.length > 0);
 }
 watch(
   () => state.overview,
@@ -190,7 +184,7 @@ watch(
   (records) => {
     const identities = new Set(records.map(recordKey));
     expandedRecords.value = expandedRecords.value.filter((key) => identities.has(key));
-    service.setRecordsInteracting(recordsSorted || expandedRecords.value.length > 0);
+    service.setRecordsInteracting(expandedRecords.value.length > 0);
   }
 );
 function number(value: string | null | undefined, compact = false): string {
@@ -271,13 +265,6 @@ const overviewCards = computed(() =>
 const runnerName = (runner: string) => t(`usageStatistics.runnerNames.${runner}`);
 const recordKey = (record: { recordId: string; ledgerId?: string }) =>
   record.ledgerId ?? record.recordId;
-function compareCount(a: Record<string, unknown>, b: Record<string, unknown>, key: string): number {
-  if (a[key] == null) return b[key] == null ? 0 : -1;
-  if (b[key] == null) return 1;
-  const left = BigInt(String(a[key])),
-    right = BigInt(String(b[key]));
-  return left === right ? 0 : left > right ? 1 : -1;
-}
 onMounted(() => {
   pagination.start();
   void refresh();
@@ -669,13 +656,13 @@ onUnmounted(() => {
             t('usageStatistics.updateRecords')
           }}</MarButton>
         </div>
+        <!-- Keep the server's newest-first order across pages and mobile appends. -->
         <MarTable
           :data="state.records"
           :row-key="recordKey"
           :expand-row-keys="expandedRecords"
           class="records"
           :aria-busy="recordsLoading"
-          @sort-change="sortChanged"
           @expand-change="expandChanged"
         >
           <template v-if="recordsLoading" #loading>
@@ -733,14 +720,10 @@ onUnmounted(() => {
               </dl></template
             ></MarTableColumn
           >
-          <MarTableColumn prop="endedAt" :label="t('usageStatistics.time')" sortable min-width="180"
+          <MarTableColumn prop="endedAt" :label="t('usageStatistics.time')" min-width="180"
             ><template #default="{ row }">{{ time(row.endedAt) }}</template></MarTableColumn
           >
-          <MarTableColumn
-            prop="runner"
-            :label="t('usageStatistics.runner')"
-            sortable
-            min-width="110"
+          <MarTableColumn prop="runner" :label="t('usageStatistics.runner')" min-width="110"
             ><template #default="{ row }">{{ runnerName(row.runner) }}</template></MarTableColumn
           >
           <MarTableColumn :label="t('usageStatistics.model')" min-width="160"
@@ -759,10 +742,6 @@ onUnmounted(() => {
             :prop="key"
             :label="
               key === 'cacheReadTokens' ? t('usageStatistics.cache') : t(`usageStatistics.${key}`)
-            "
-            sortable
-            :sort-method="
-              (a: Record<string, unknown>, b: Record<string, unknown>) => compareCount(a, b, key)
             "
             :min-width="key === 'cacheReadTokens' ? 170 : 110"
           >

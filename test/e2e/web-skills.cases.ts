@@ -688,6 +688,9 @@ test('Skill source management discovers external entries and adds them to the pe
   const sourceRow = page
     .locator('.skill-source-table .mar-ui-table__row')
     .filter({ hasText: 'skills.sh' });
+  await expect(
+    page.locator('.skill-source-table').getByRole('columnheader').getByRole('button')
+  ).toHaveText(['名称']);
   await sourceRow.click();
   const sourceDetails = page
     .getByRole('dialog', { name: '技能详情', exact: true })
@@ -713,6 +716,9 @@ test('Skill source management discovers external entries and adds them to the pe
     .filter({ hasText: 'code-review' });
   await expect(page.locator('.source-skill-table')).toContainText('说明');
   await expect(candidate).toContainText('Review changes before merge');
+  await expect(
+    page.locator('.source-skill-table').getByRole('columnheader').getByRole('button')
+  ).toHaveCount(0);
   expect(new URL(sourceRequestUrls[0]!).searchParams.get('query')).toBe('code review');
   expect(new URL(sourceRequestUrls[0]!).searchParams.get('limit')).toBe('40');
   await expect(candidate.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
@@ -746,6 +752,9 @@ test('Skill source management discovers external entries and adds them to the pe
     'true'
   );
   await expect(page.locator('.catalog-skill-table')).toBeVisible();
+  await expect(
+    page.locator('.catalog-skill-table').getByRole('columnheader').getByRole('button')
+  ).toHaveText(['名称']);
   const catalogLayout = await page.locator('.mar-management-page').evaluate((element) => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth
@@ -1056,6 +1065,9 @@ test('MCP source tables open source, discovery, and catalog details through clic
   const sourceRow = page
     .locator('.mcp-source-table .mar-ui-table__row')
     .filter({ hasText: 'Acme Registry' });
+  await expect(
+    page.locator('.mcp-source-table').getByRole('columnheader').getByRole('button')
+  ).toHaveText(['名称']);
   await sourceRow.click();
   const sourceDetails = page
     .getByRole('dialog', { name: 'MCP 详情', exact: true })
@@ -1079,6 +1091,9 @@ test('MCP source tables open source, discovery, and catalog details through clic
     .filter({ hasText: 'Acme Search' });
   await expect(page.locator('.source-mcp-table')).toContainText('说明');
   await expect(candidateRow).toContainText('Search MCP server');
+  await expect(
+    page.locator('.source-mcp-table').getByRole('columnheader').getByRole('button')
+  ).toHaveCount(0);
   await expect(candidateRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await expect(
     candidateRow.getByRole('button', { name: '加入可用目录' }).locator('[data-mar-icon="plus"]')
@@ -1095,6 +1110,9 @@ test('MCP source tables open source, discovery, and catalog details through clic
     .locator('.catalog-mcp-table .mar-ui-table__row')
     .filter({ hasText: 'Acme Existing' });
   await expect(catalogRow).toContainText('1.0.0');
+  await expect(
+    page.locator('.catalog-mcp-table').getByRole('columnheader').getByRole('button')
+  ).toHaveText(['名称']);
   await expect(catalogRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await expect(
     catalogRow.getByRole('button', { name: '编辑', exact: true }).locator('[data-mar-icon]')

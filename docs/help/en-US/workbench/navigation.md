@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-28
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -105,7 +105,7 @@ Custom date ranges can span up to 90 days and may include future dates, such as 
 
 Model rankings and filters distinguish Agent, provider, and configuration identity. MAR Agent lists personal, organization, and Fast configurations separately even when they share an upstream model ID; other agents use their native model IDs. Historical records without a configuration identity fall back to the recorded model without inferring configuration ownership. Usage from an organization configuration still belongs to the person who initiated it; this does not mean personal credentials were used.
 
-The visible page refreshes every 60 seconds and pauses when hidden or closed. Failed refreshes keep the existing data and retry later. While paging, sorting, or expanding records, summaries keep updating but records remain in place; choose **Update records** or **Refresh** to return to the latest first page. Records load in batches of 20. On desktop, the standard management pager shows the actual filtered record count and page count and supports direct page jumps. On mobile, more records load automatically near the bottom; if loading fails, retry in place. Column sorting applies to the current desktop page or the already loaded mobile records. Changing filters or explicitly refreshing resets the loaded records. Custom date ranges stay fixed during automatic refreshes.
+The visible page refreshes every 60 seconds and pauses when hidden or closed. Failed refreshes keep the existing data and retry later. While paging or expanding records, summaries keep updating but records remain in place; choose **Update records** or **Refresh** to return to the latest first page. Records appear in order of end time, newest first, and load in batches of 20. On desktop, the standard management pager shows the actual filtered record count and page count and supports direct page jumps. On mobile, more records load automatically near the bottom; if loading fails, retry in place. Changing filters or explicitly refreshing resets the loaded records. Custom date ranges stay fixed during automatic refreshes.
 
 Input includes cache reads and writes; output includes identifiable reasoning tokens. Cache and reasoning details are not added to the total again. Main and subagent conversation requests, compaction, prediction, and title generation are recorded in their respective categories rather than mixed into Conversation. Failed or cancelled requests retain usage already reported by the provider. Missing token fields are recorded and displayed as 0. Total tokens are input plus output; later usage updates revise the same record.
 

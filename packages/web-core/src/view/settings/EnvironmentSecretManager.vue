@@ -114,6 +114,8 @@ const visibleSecrets = computed(() =>
 );
 // Node/Workspace secret tabs must show the complete target configuration.
 const targetScoped = computed(() => props.nodeId !== undefined || props.workspaceId !== undefined);
+// Only the paginated management list offers server-side sorting.
+const columnSortable = computed(() => (targetScoped.value ? false : 'custom'));
 const sortBy = ref<string>();
 const sortOrder = ref<string>();
 const pagination = createManagementPageService<Secret>({
@@ -380,7 +382,7 @@ function message(error: unknown): string {
       <MarTableColumn
         prop="name"
         :label="translate('generated.environmentSecretManager.name')"
-        :sortable="targetScoped ? true : 'custom'"
+        :sortable="columnSortable"
         min-width="150"
       >
         <template #default="{ row }">
@@ -390,7 +392,7 @@ function message(error: unknown): string {
       <MarTableColumn
         prop="value"
         :label="translate('generated.environmentSecretManager.value')"
-        :sortable="targetScoped ? true : 'custom'"
+        :sortable="columnSortable"
         min-width="170"
       >
         <template #default="{ row }">
@@ -400,7 +402,7 @@ function message(error: unknown): string {
       <MarTableColumn
         prop="scope"
         :label="translate('generated.environmentSecretManager.scope')"
-        :sortable="targetScoped ? true : 'custom'"
+        :sortable="columnSortable"
         width="100"
       >
         <template #default="{ row }">{{ secretScopeLabel(row) }}</template>

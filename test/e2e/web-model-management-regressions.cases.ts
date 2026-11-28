@@ -275,6 +275,10 @@ for (const english of [false, true]) {
     const modelPanel = page.getByRole('tabpanel', { name: strings.modelTab });
     const modelRows = modelPanel.locator('.mar-ui-table__row');
     await expect(modelRows).toHaveCount(21);
+    await expect(modelPanel.getByRole('columnheader').getByRole('button')).toHaveCount(0);
+    await expect(
+      modelPanel.getByRole('button', { name: english ? 'Adjust order' : '调整排序', exact: true })
+    ).toBeEnabled();
     await expect(modelPanel.locator('.mar-ui-pagination')).toHaveCount(0);
     await expect(modelRows.last()).toContainText('Model 21');
     const actionsBounds = await modelPanel.locator('.mar-table-actions').boundingBox();

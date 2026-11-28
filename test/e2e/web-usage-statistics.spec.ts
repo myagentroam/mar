@@ -138,7 +138,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         completeRequests: '0'
       }
     ];
-    const record = (id: string) => ({
+    const record = (id: string, index = 0) => ({
       schemaVersion: 1,
       recordId: id,
       ledgerId: id,
@@ -152,8 +152,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       agentRole: 'root',
       state: 'succeeded',
       coverage: 'request',
-      startedAt: now - 2000,
-      endedAt: now - 1000,
+      startedAt: now - 2000 - index * 1000,
+      endedAt: now - 1000 - index * 1000,
       inputTokens: '1234567',
       cacheReadTokens: id.endsWith('-2') ? undefined : id.endsWith('-1') ? '0' : '617283',
       cacheWriteTokens: '0',
@@ -161,6 +161,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       mode: 'work',
       totalTokens: null
     });
+    const pageSize = 20;
+    const recordCount = 61;
+    const records = Array.from({ length: recordCount }, (_, index) =>
+      record(`page-${Math.floor(index / pageSize) + 1}-${index % pageSize}`, index)
+    );
     const requests: URL[] = [];
     let categoryTesting = false;
     let failure = false;
@@ -200,10 +205,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         if (mobile && number === 2) await (filteredMobileAppend ?? nextMobilePage).promise;
         if (number === 4) await pendingPageRead;
         return json(route, {
-          records: Array.from({ length: number === 4 ? 1 : 20 }, (_, index) =>
-            record(`page-${number}-${index}`)
-          ),
-          total: '61',
+          records: records.slice((number - 1) * pageSize, number * pageSize),
+          total: String(recordCount),
           page: number,
           nextCursor: number === 4 ? null : 'next'
         });
@@ -214,7 +217,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       return json(route, {
         asOf: now,
         availableFrom: now - 90 * 86400000,
-        firstRecordedAt: now - 2000,
+        firstRecordedAt: records.at(-1)!.startedAt,
         lastReceivedAt: now,
         last24Hours: categoryTotals,
         last7Days: categoryTotals,
@@ -277,6 +280,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     finishInitialRead();
     await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
     await expect(tableLoading).toHaveCount(0);
+    await expect(recordsTable.getByRole('columnheader').getByRole('button')).toHaveCount(0);
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
     await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     const refreshButton = panel.getByRole('button', { name: labels.refresh, exact: true });
@@ -542,6 +546,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const rows = panel.locator('.records .mar-ui-table__row');
     await expect(rows).toHaveCount(20);
     await expect(rows.first()).toContainText('2026-10-14 09:44:04');
+    await expect(rows.nth(1)).toContainText('2026-10-14 09:44:03');
     await expect(rows.first()).toContainText(`${compact('617283')} (50%)`);
     await expect(rows.nth(1)).toContainText('0 (0%)');
     await expect(rows.nth(2)).toContainText('0 (0%)');
@@ -592,6 +597,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       finishPageRead();
       await page.clock.runFor(500);
       await expect(rows).toHaveCount(61);
+      await expect(rows.nth(19)).toContainText('2026-10-14 09:43:45');
+      await expect(rows.nth(20)).toContainText('2026-10-14 09:43:44');
+      await expect(rows.last()).toContainText('2026-10-14 09:43:04');
       await expect(panel.locator('.record-detail')).toHaveCount(1);
       expect(
         requests
@@ -616,6 +624,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(rows).toHaveCount(20);
       finishPageRead();
       await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText('2026-10-14 09:43:04');
       await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
       await expect(tableLoading).toHaveCount(0);
       await page.clock.runFor(500);
@@ -794,14 +803,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.runFor(500);
     await expect(panel.locator('.record-detail')).toHaveCount(0);
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toHaveCount(0);
-    await panel.locator('.records th .mar-ui-table__sort').first().press('Enter');
-    await expect(panel.locator('.records th[aria-sort="ascending"]')).toHaveCount(1);
-    const beforeSorted = { overview: reads('overview'), records: reads('records') };
+    const beforeBrowsing = { overview: reads('overview'), records: reads('records') };
     await page.clock.fastForward(60_000);
-    await expect.poll(() => reads('overview')).toBe(beforeSorted.overview + 1);
-    await expect(panel.getByRole('button', { name: labels.update, exact: true })).toBeVisible();
-    await expect(panel.locator('.records th[aria-sort="ascending"]')).toHaveCount(1);
-    expect(reads('records')).toBe(beforeSorted.records);
+    await expect.poll(() => reads('overview')).toBe(beforeBrowsing.overview + 1);
+    await expect.poll(() => reads('records')).toBe(beforeBrowsing.records + 1);
+    await expect(panel.getByRole('button', { name: labels.update, exact: true })).toHaveCount(0);
     await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     await page.clock.resume();
 

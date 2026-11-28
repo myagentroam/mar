@@ -26,54 +26,67 @@ afterEach(() => {
 
 describe('Public environment secret management', () => {
   it.each([
-    { scope: 'PERSONAL', nodeId: undefined },
-    { scope: 'NODE', nodeId: 'node-fixture' }
-  ])('loads the table for the first $scope read and manual refresh', async ({ scope, nodeId }) => {
-    vi.stubGlobal('window', {
-      location: { search: '', href: 'http://fixture/console' },
-      history: { replaceState: vi.fn() },
-      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
-    });
-    const first = Promise.withResolvers<unknown>();
-    const next = Promise.withResolvers<unknown>();
-    const result = { secrets: [], page: 1, pageSize: 20, total: 0, hasMore: false };
-    const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValue(next.promise);
-    const view = renderComponent(SecretManager, { request, scopes: [scope], nodeId });
-    const table = () => view.findAll('MarTable')[0]!.props;
-    const refresh = () =>
-      view
-        .findAll('MarButton')
-        .find(
-          (node) =>
-            textContent(node).trim() === i18n.global.t('generated.environmentSecretManager.refresh')
-        )!;
-    try {
-      await flushComponent();
-      expect(table()['aria-busy']).toBe(true);
-      expect(view.findAll('span').filter((node) => node.props.role === 'progressbar')).toHaveLength(
-        1
-      );
-      first.resolve(result);
-      await flushComponent();
-      expect(table()['aria-busy']).toBe(false);
+    { scope: 'PERSONAL', nodeId: undefined, workspaceId: undefined, sortable: 3 },
+    { scope: 'NODE', nodeId: 'node-fixture', workspaceId: undefined, sortable: 0 },
+    { scope: 'WORKSPACE', nodeId: 'node-fixture', workspaceId: 'workspace-fixture', sortable: 0 }
+  ])(
+    'loads the table for the first $scope read and manual refresh',
+    async ({ scope, nodeId, workspaceId, sortable }) => {
+      vi.stubGlobal('window', {
+        location: { search: '', href: 'http://fixture/console' },
+        history: { replaceState: vi.fn() },
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+      });
+      const first = Promise.withResolvers<unknown>();
+      const next = Promise.withResolvers<unknown>();
+      const result = { secrets: [], page: 1, pageSize: 20, total: 0, hasMore: false };
+      const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValue(next.promise);
+      const view = renderComponent(SecretManager, {
+        request,
+        scopes: [scope],
+        nodeId,
+        workspaceId
+      });
+      const table = () => view.findAll('MarTable')[0]!.props;
+      const refresh = () =>
+        view
+          .findAll('MarButton')
+          .find(
+            (node) =>
+              textContent(node).trim() ===
+              i18n.global.t('generated.environmentSecretManager.refresh')
+          )!;
+      try {
+        await flushComponent();
+        expect(table()['aria-busy']).toBe(true);
+        expect(
+          view.findAll('span').filter((node) => node.props.role === 'progressbar')
+        ).toHaveLength(1);
+        first.resolve(result);
+        await flushComponent();
+        expect(table()['aria-busy']).toBe(false);
+        expect(
+          view.findAll('button').filter((node) => node.props.class === 'mar-ui-table__sort')
+        ).toHaveLength(sortable);
 
-      const refreshing = trigger(refresh(), 'onClick');
-      await flushComponent();
-      expect(request).toHaveBeenCalledTimes(2);
-      expect(refresh().props['disabled']).toBe(true);
-      expect(refresh().props['loading']).not.toBe(true);
-      expect(table()['aria-busy']).toBe(true);
-      expect(view.findAll('span').filter((node) => node.props.role === 'progressbar')).toHaveLength(
-        1
-      );
-      next.resolve(result);
-      await refreshing;
-      expect(refresh().props['disabled']).toBe(false);
-      expect(table()['aria-busy']).toBe(false);
-    } finally {
-      view.unmount();
+        const refreshing = trigger(refresh(), 'onClick');
+        await flushComponent();
+        expect(request).toHaveBeenCalledTimes(2);
+        expect(refresh().props['disabled']).toBe(true);
+        expect(refresh().props['loading']).not.toBe(true);
+        expect(table()['aria-busy']).toBe(true);
+        expect(
+          view.findAll('span').filter((node) => node.props.role === 'progressbar')
+        ).toHaveLength(1);
+        next.resolve(result);
+        await refreshing;
+        expect(refresh().props['disabled']).toBe(false);
+        expect(table()['aria-busy']).toBe(false);
+      } finally {
+        view.unmount();
+      }
     }
-  });
+  );
 
   it('loads the table for filter reads after the first page has loaded empty', async () => {
     vi.stubGlobal('window', {

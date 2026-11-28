@@ -543,7 +543,6 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.mcpSourceManagementPage.scope')"
         width="144"
         show-overflow-tooltip
-        sortable
         ><template #default="{ row }">{{ scopeLabel(row.scope) }}</template></MarTableColumn
       >
       <MarTableColumn
@@ -624,6 +623,7 @@ function scopeLabel(scope: string): string {
             </template>
           </MarInput>
         </div>
+        <!-- Keep discovery results in query order rather than sorting the returned subset. -->
         <div class="mcp-table-section">
           <MarTable
             v-if="discoveryState !== 'idle'"
@@ -641,7 +641,6 @@ function scopeLabel(scope: string): string {
             <MarTableColumn
               prop="displayName"
               :label="translate('generated.mcpSourceManagementPage.name')"
-              sortable
               min-width="180"
             />
             <MarTableColumn

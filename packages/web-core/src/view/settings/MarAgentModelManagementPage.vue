@@ -1595,11 +1595,11 @@ onBeforeUnmount(() => {
               }}</MarTag>
             </template>
           </MarTableColumn>
+          <!-- Capability labels are read-only; the explicit reorder mode owns model priority. -->
           <MarTableColumn
             prop="conversationModel"
             :label="translate('marAgentModels.conversationModel')"
             width="130"
-            sortable
           >
             <template #default="{ row }">{{
               translate(
@@ -1611,7 +1611,6 @@ onBeforeUnmount(() => {
             prop="subagentModel"
             :label="translate('marAgentModels.subagentModel')"
             min-width="150"
-            sortable
           >
             <template #default="{ row }">{{
               translate(row.subagentModel ? 'marAgentModels.yes' : 'marAgentModels.no')
@@ -1621,7 +1620,6 @@ onBeforeUnmount(() => {
             prop="unifiedCompact"
             :label="translate('marAgentModels.unifiedCompact')"
             min-width="150"
-            sortable
           >
             <template #default="{ row }">{{
               translate(row.unifiedCompact ? 'marAgentModels.yes' : 'marAgentModels.no')

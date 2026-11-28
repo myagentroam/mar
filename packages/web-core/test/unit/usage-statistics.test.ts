@@ -1076,7 +1076,8 @@ describe('usage statistics settings contract', () => {
       app.directive('tooltip', {});
       app.use(i18n);
       const html = await renderToString(app);
-      expect(html).toMatch(/class="mar-ui-table__sort"[^>]*><span>Agent<\/span>/u);
+      const headers = html.match(/<th\b[^>]*>[\s\S]*?<\/th>/gu) ?? [];
+      expect(headers.map((header) => header.replace(/<[^>]*>/gu, ''))).toContain('Agent');
       expect(html).toContain(`>${locale === 'en-US' ? 'By Agent' : '按 Agent'}</h4>`);
       const legend = html.match(/<div class="legend"[^>]*>([\s\S]*?)<\/div>/u)?.[1];
       expect(legend).toBeDefined();

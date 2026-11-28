@@ -513,11 +513,6 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.skillSourceManagementPage.scope')"
         width="144"
         show-overflow-tooltip
-        sortable
-        :sort-method="
-          (a: SkillSourceCard, b: SkillSourceCard) =>
-            scopeLabel(a.scope).localeCompare(scopeLabel(b.scope))
-        "
         ><template #default="{ row }">{{ scopeLabel(row.scope) }}</template></MarTableColumn
       >
       <MarTableColumn
@@ -606,6 +601,7 @@ function scopeLabel(scope: string): string {
             </template>
           </MarInput>
         </div>
+        <!-- Keep discovery results in query order rather than sorting the returned subset. -->
         <div class="skill-table-section">
           <MarTable
             v-if="sourceSkillsState !== 'idle'"
@@ -623,7 +619,6 @@ function scopeLabel(scope: string): string {
             <MarTableColumn
               prop="name"
               :label="translate('generated.skillSourceManagementPage.name')"
-              sortable
               min-width="180"
             />
             <MarTableColumn
