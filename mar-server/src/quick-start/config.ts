@@ -116,7 +116,11 @@ export async function readQuickStartConfig(path: string): Promise<QuickStartConf
   }
 }
 
-export async function writeQuickStartConfig(path: string, config: QuickStartConfig): Promise<void> {
+export async function writeQuickStartConfig(
+  path: string,
+  config: QuickStartConfig,
+  signal?: AbortSignal
+): Promise<void> {
   const valid = validateConfig(config);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomBytes(12).toString('hex')}.tmp`;
@@ -128,6 +132,7 @@ export async function writeQuickStartConfig(path: string, config: QuickStartConf
     } finally {
       await file.close();
     }
+    signal?.throwIfAborted();
     await rename(temporary, path);
   } catch (error) {
     await unlink(temporary).catch(() => {});

@@ -14,19 +14,19 @@ describe('Core structured Prompt composition', () => {
     [
       'run',
       ['read', 'exec', 'skill'],
-      'f9bd374420b5ed6246ce25717b40dfe290e6b22da3113e75e158e90172271107'
+      'd0c3ed4a015f8c84bec4dc29095f57fb0bfcf439f50506a8866124c9504b1d71'
     ],
     ['plan', [], 'b32c06d3ac5ba7b89a0b73c31b49dd2d0c178f1e5871961444c1de6fcc315c52'],
     [
       'plan',
       ['read', 'exec', 'skill'],
-      '67f42a95d8321338097d62992dab14eb1041c67a0c2bde70b25b709042a80df4'
+      'b32c06d3ac5ba7b89a0b73c31b49dd2d0c178f1e5871961444c1de6fcc315c52'
     ],
     ['compact', [], 'f7146f8f3f8a7bcb84a0176ca1259b9a5514cf638ed7eb0049972d7787e9dfc0'],
     [
       'compact',
       ['read', 'exec', 'skill'],
-      '047436cb88c7b516b5a4d6f8bc2266e4c1418b0dec2eeea632930469a61c850b'
+      'f7146f8f3f8a7bcb84a0176ca1259b9a5514cf638ed7eb0049972d7787e9dfc0'
     ]
   ] as const)('preserves the current %s Prompt bytes (%j)', (mode, tools, digest) => {
     const input = {

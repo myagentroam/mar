@@ -102,55 +102,24 @@ describe('system prompt', () => {
     expect(retainedSessionResourcesSnapshot({ processes: [], extensions: [] })).toBeUndefined();
   });
 
-  it('distinguishes direct tools from Code Mode functions without dropping capability guidance', () => {
+  it.each([false, true])('omits the workflow tool catalog with Code Mode=%s', (codeMode) => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
-      tools: [
-        'code_exec',
-        'read',
-        'exec',
-        'skill_load',
-        'apply_patch',
-        'agent_start',
-        'agent_wait',
-        'agent_send',
-        'agent_stop',
-        'todo'
-      ],
-      directTools: [
-        'code_exec',
-        'skill_load',
-        'agent_start',
-        'agent_wait',
-        'agent_send',
-        'agent_stop'
-      ]
+      tools: codeMode ? ['code_exec', 'read', 'exec'] : ['read', 'exec'],
+      directTools: codeMode ? ['code_exec', 'exec'] : ['read', 'exec']
     });
-    expect(prompt).toContain(
-      'Available client tools: code_exec, skill_load, agent_start, agent_wait, agent_send, agent_stop.'
-    );
-    expect(prompt).toContain('Code Mode Only: read, exec, apply_patch, todo');
-    expect(prompt).toContain('only as tools.NAME inside code_exec');
-    expect(prompt).not.toContain('References to these tool names');
-    expect(prompt).toContain('either permitted entry point; direct-only controls remain direct');
-    expect(prompt).not.toContain('Use code_exec even for one of these tools');
-    expect(prompt).toContain('tool descriptions and schemas');
-    expect(prompt).not.toContain('call skill before generic tools');
-    expect(prompt).not.toContain('# Subagents');
-    expect(prompt).not.toContain('do not make a single-step plan');
-  });
-  it('omits the Code Mode Only list when no tools require that route', () => {
-    const prompt = buildSystemPrompt({
-      mode: 'run',
-      platform: 'linux',
-      workspace: '/workspace',
-      tools: ['code_exec', 'skill_load']
-    });
-    expect(prompt).toContain('Available client tools: code_exec, skill_load.');
-    expect(prompt).not.toContain('Code Mode Only:');
-    expect(prompt).toContain('either permitted entry point; direct-only controls remain direct');
+    for (const retired of [
+      '# Tools and execution',
+      'Available client tools:',
+      'Code Mode Only:',
+      'only as tools.NAME inside code_exec',
+      'direct-only controls remain direct',
+      'tool descriptions and schemas',
+      'built-in rg'
+    ])
+      expect(prompt).not.toContain(retired);
   });
   it('keeps the entire base instruction stable when only environment facts change', () => {
     const common = { mode: 'run' as const, tools: ['read', 'exec'], extension: 'HOST_CONTRACT' };
@@ -187,6 +156,7 @@ describe('system prompt', () => {
     expect(context).toContain('<architecture>x64</architecture>');
     expect(context).toContain('<shell>bash</shell>');
     expect(context).toContain('<shell_path>/bin/bash</shell_path>');
+    expect(context).toContain('<available_command name="rg" version="15.1.0" />');
     expect(context).toContain('&lt;/mar_environment&gt;');
     expect(context.match(/<\/mar_environment>/g)).toHaveLength(1);
     expect(context).toBe(
@@ -203,7 +173,7 @@ describe('system prompt', () => {
     );
   });
 
-  it('assembles runtime contracts and the actual tool catalog', () => {
+  it('assembles the core runtime contracts', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
@@ -227,7 +197,6 @@ describe('system prompt', () => {
       '# Identity',
       '# Instruction priority',
       '# Environment and workspace',
-      '# Tools and execution',
       '# Security'
     ])
       expect(prompt).toContain(section);
@@ -236,8 +205,6 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('Architecture: x64');
     expect(prompt).not.toContain('Shell: sh (/bin/sh)');
     expect(prompt).not.toContain('rg 15.1.0');
-    expect(normalized).toContain('tool descriptions and schemas');
-    expect(normalized).toContain('dependencies and side effects');
     expect(normalized).not.toContain('only for what its result actually proves');
     expect(normalized).not.toContain('use bounded waits rather than busy polling');
     expect(normalized).toContain('tools execute without per-call agent approval');
@@ -321,19 +288,19 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('resolve pending work needed for this task');
     expect(normalized).not.toContain('terminal caches need no cleanup');
     expect(normalized).not.toContain('# output and communication style');
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.85');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.87');
   });
 
   it('adds the reasoning guidance only when Thought is directly available', () => {
     const input = { mode: 'run', platform: 'linux', workspace: '/workspace' } as const;
     const guidance =
       '<reasoning>\nDuring extended reasoning, earlier insights may be lost if left unrecorded.\n\nWhen you reach a conclusion useful for later reasoning - such as confirming a hypothesis, ruling out an approach, or making a decision - use `thought` to record it and its key evidence before moving on.\n\nSkip trivial observations. Do not repeat conclusions already recorded with their supporting evidence.\n</reasoning>';
-    const prompt = buildSystemPrompt({
+    const sections = buildSystemPromptSections({
       ...input,
       tools: ['code_exec', 'thought', 'exec'],
       directTools: ['code_exec', 'thought']
     });
-    expect(prompt).toContain(guidance);
+    expect(sections.find((section) => section.id === 'core:reasoning')?.text).toBe(guidance);
     expect(buildSystemPrompt({ ...input, tools: ['exec'] })).not.toContain('<reasoning>');
     expect(
       buildSystemPrompt({ ...input, tools: ['thought', 'code_exec'], directTools: ['code_exec'] })
@@ -350,7 +317,6 @@ describe('system prompt', () => {
       workspace: '/workspace',
       tools: ['skill_load', 'exec']
     });
-    expect(prompt).toContain('Available client tools: skill_load, exec.');
     expect(prompt).not.toContain('Reuse instructions already in context');
     expect(prompt).not.toContain('call skill before generic tools');
     expect(prompt).toContain(
@@ -378,6 +344,7 @@ describe('system prompt', () => {
     for (const id of [
       'core:workspace-discipline',
       'core:workflow',
+      'core:tools',
       'core:long-running',
       'core:output-style'
     ]) {
@@ -429,7 +396,7 @@ describe('system prompt', () => {
     ).toEqual(['core:safety']);
   });
 
-  it('leaves investigation and editing strategy to the model and applicable instructions', () => {
+  it('leaves tool use and editing strategy to the model and applicable instructions', () => {
     const promptFor = (tools: string[]) =>
       buildSystemPrompt({
         mode: 'run',
@@ -442,17 +409,15 @@ describe('system prompt', () => {
       ['read', 'apply_patch']
     ]) {
       const prompt = promptFor(tools);
-      expect(prompt).toContain('dependencies and side effects');
+      expect(prompt).not.toContain(
+        'respect dependencies and side effects when combining operations'
+      );
       expect(prompt).not.toContain('locate relevant symbols, headings, or files before reading');
       expect(prompt).not.toContain('batch independent lookups and already-decided commands');
       expect(prompt).not.toContain('use scripts for mechanical substitutions');
       expect(prompt).not.toContain('preconditioned deterministic replacement');
       expect(prompt).not.toContain('expand only when current evidence is insufficient');
     }
-    expect(promptFor(['exec'])).toContain(
-      'you can use the built-in rg through exec to search file contents or rg --files to list file paths'
-    );
-    expect(promptFor(['read', 'apply_patch'])).not.toContain('built-in rg');
   });
 
   it('keeps the Todo list contract out of the system prompt', () => {
@@ -493,7 +458,6 @@ describe('system prompt', () => {
     }).toLowerCase();
 
     for (const prompt of [withPatch, withExec, withoutWriteTool]) {
-      expect(prompt).toContain('tool descriptions and schemas');
       expect(prompt).not.toContain('write large generated documents in bounded sections');
       expect(prompt).not.toContain('mechanical rewrites are exempt');
       expect(prompt).not.toContain('8 kib');
@@ -593,8 +557,6 @@ describe('system prompt', () => {
     });
     const normalized = prompt.toLowerCase();
 
-    expect(prompt).toContain('Available client tools: read');
-    expect(normalized).toContain('tool descriptions and schemas');
     expect(normalized).not.toContain('use exec for platform-native commands');
     expect(normalized).not.toContain('prefer apply_patch');
     expect(normalized).not.toContain('agent_wait');
@@ -605,7 +567,7 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('Leave enough to continue reasoning correctly');
   });
 
-  it('lists Skill and Subagent capabilities without imposing a Core-owned usage policy', () => {
+  it('leaves Skill and Subagent capability declarations to tool definitions and extensions', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
@@ -614,13 +576,10 @@ describe('system prompt', () => {
     });
     const normalized = prompt.toLowerCase();
 
-    expect(prompt).toContain(
-      'Available client tools: skill_load, agent_start, agent_wait, agent_stop.'
-    );
     expect(normalized).not.toContain('named or clearly relevant skill');
     expect(normalized).not.toContain('call skill before generic tools');
     expect(prompt).not.toContain('# Subagents');
-    expect(normalized).toContain('agent_wait');
+    expect(normalized).not.toContain('agent_wait');
   });
 
   it('leaves delegation policy to the installed extension instead of Core', () => {
@@ -632,23 +591,20 @@ describe('system prompt', () => {
     });
 
     expect(prompt).not.toContain('# Subagents');
-    expect(prompt).toContain('agent_start');
-    expect(prompt).toContain('agent_send');
-    expect(prompt).toContain('agent_wait');
-    expect(prompt).toContain('agent_stop');
+    expect(prompt).not.toMatch(/agent_(?:start|send|wait|stop)/u);
     expect(prompt).not.toContain('preparatory analysis is not a final review');
     expect(prompt).not.toContain('Revalidate affected findings after later edits');
     expect(prompt).not.toMatch(/(?:at most|maximum|up to) 2|Luna|task DAG/u);
   });
 
-  it('treats Plan as guidance while retaining the normal tool catalog', () => {
+  it('treats Plan as guidance without a separate tool catalog', () => {
     const prompt = buildSystemPrompt({
       mode: 'plan',
       platform: 'win32',
       workspace: 'C:\\work',
       tools: ['read', 'exec', 'apply_patch', 'question']
     });
-    expect(prompt).toContain('read, exec, apply_patch');
+    expect(prompt).not.toContain('Available client tools:');
     expect(prompt).toContain('behavioral guidance, not a security boundary');
     expect(prompt).toContain('Do not create, modify, delete, rename, or move files');
     expect(prompt).toContain('return only a concise, actionable plan');

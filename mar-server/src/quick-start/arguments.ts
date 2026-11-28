@@ -6,6 +6,7 @@ export type QuickStartArguments =
       readonly config?: string;
       readonly node?: false;
       readonly searxng?: false;
+      readonly reinstallSearxng?: true;
     };
 
 export function parseQuickStartArguments(args: readonly string[]): QuickStartArguments {
@@ -16,6 +17,7 @@ export function parseQuickStartArguments(args: readonly string[]): QuickStartArg
   let config: string | undefined;
   let node: false | undefined;
   let searxng: false | undefined;
+  let reinstallSearxng = false;
   let help = false;
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -27,17 +29,22 @@ export function parseQuickStartArguments(args: readonly string[]): QuickStartArg
       node = false;
     } else if (arg === '--no-searxng' && command === 'setup' && searxng === undefined) {
       searxng = false;
+    } else if (arg === '--reinstall-searxng' && command === 'setup' && !reinstallSearxng) {
+      reinstallSearxng = true;
     } else if (arg === '--help' && !help) {
       help = true;
     } else {
       throw new Error('Invalid argument');
     }
   }
+  if (reinstallSearxng && (node === false || searxng === false))
+    throw new Error('Invalid argument');
   if (help) return { command: 'help' };
   return {
     command,
     ...(config === undefined ? {} : { config }),
     ...(node === undefined ? {} : { node }),
-    ...(searxng === undefined ? {} : { searxng })
+    ...(searxng === undefined ? {} : { searxng }),
+    ...(reinstallSearxng ? { reinstallSearxng: true } : {})
   };
 }

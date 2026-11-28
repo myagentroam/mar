@@ -470,11 +470,14 @@ describe('Contextual prompt state', () => {
     ]);
   });
 
-  it.each(['run', 'compact'] as const)(
-    'revokes the retired long-running block in the next %s request',
-    async (mode) => {
-      const id = 'core:long-running';
-      const oldPolicy = 'OLD_LONG_RUNNING_POLICY';
+  it.each(
+    ['core:long-running', 'core:tools'].flatMap((id) =>
+      (['run', 'compact'] as const).map((mode) => ({ id, mode }))
+    )
+  )(
+    'revokes the retired SDK instruction $id in the first $mode request after upgrade',
+    async ({ id, mode }) => {
+      const oldPolicy = `Retired policy for ${id}.`;
       const f = await fixture([], answer);
       if (mode === 'compact') {
         expect(await f.session.run({ prompt: 'seed history' }).result()).toMatchObject({

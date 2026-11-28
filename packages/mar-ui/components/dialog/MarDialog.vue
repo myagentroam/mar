@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from 'vue';
 import { useMarUiLocale } from '../../locale/index.js';
 import { MarButton } from '../button/index.js';
+import { closeModal, openModal } from './modal-layer.js';
 
 /** Owns one modal surface. The caller owns the flow, its guard and its business state. */
 defineOptions({ inheritAttrs: false });
@@ -100,7 +101,7 @@ async function finish(fromUser: boolean, alreadyClosed = false) {
   await nextTick();
   if (owner.open) await new Promise<void>((resolve) => afterMotion(owner, resolve));
   if (disposed || epoch !== motion) return;
-  owner.close();
+  closeModal(owner);
   leaving.value = false;
   emit('closed');
   if (fromUser) emit('update:modelValue', false);
@@ -167,7 +168,7 @@ function onNativeClose(event: Event) {
   }
   // The model still owns the modal. Restore it before running its normal
   // close policy, which may refuse or open an unsaved-changes confirmation.
-  owner.showModal();
+  openModal(owner);
   if (focused instanceof HTMLElement && owner.contains(focused)) {
     focused.focus({ preventScroll: true });
   }
@@ -214,7 +215,7 @@ watch(
     if (content) content.toggleAttribute('autofocus', !content.querySelector('[autofocus]'));
     // The native dialog would otherwise focus the invoker before the owner's close hook runs.
     invoker?.blur();
-    owner.showModal();
+    openModal(owner);
     emit('focus');
     void nextTick(() =>
       afterMotion(owner, () => {
@@ -230,8 +231,10 @@ onBeforeUnmount(() => {
   ++motion;
   generation += 1;
   const owner = dialog.value;
-  if (!owner?.open) return;
-  owner.close();
+  if (!owner) return;
+  const wasOpen = owner.open;
+  closeModal(owner);
+  if (!wasOpen) return;
   emit('close-auto-focus');
   restoreFocus(owner);
 });

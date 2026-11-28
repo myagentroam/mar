@@ -312,10 +312,28 @@ describe('Code Mode SDK and protocol integration', () => {
           expect(request.tools.some((tool) => tool.name === 'exec_wait')).toBe(true);
           expect(request.tools.some((tool) => tool.name === 'exec')).toBe(true);
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
-          expect(description).toContain('"name":"exec_wait"');
-          expect(description).toContain('"name":"exec"');
-          expect(description).toContain("follow exec_wait's calling guidance");
-          expect(description).toContain('Omitted means no process timeout');
+          const directory = JSON.parse(description.split('\nProgrammatic tools: ')[1]!);
+          expect(directory).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                name: 'exec',
+                inputSchema: expect.objectContaining({
+                  properties: expect.objectContaining({
+                    timeoutMs: expect.objectContaining({
+                      description: expect.stringContaining('Omitted means no process timeout')
+                    })
+                  })
+                })
+              }),
+              expect.objectContaining({
+                name: 'exec_wait',
+                description: expect.stringContaining(
+                  'Wait for or control a managed process by processId.'
+                ),
+                inputSchema: expect.objectContaining({ required: ['processId'] })
+              })
+            ])
+          );
         }
         expect(
           events.filter((event) => event.type === 'tool.started' && event.toolName === 'code_exec')
@@ -787,8 +805,8 @@ describe('Code Mode SDK and protocol integration', () => {
             arguments: `
               const names = ["todo_read", "todo_write"];
               const output = {
-                registered: catalog.tools().some((tool) => names.includes(tool.name)),
-                todoAvailable: catalog.tools().some((tool) => tool.name === 'todo')
+                registered: names.some((name) => Object.hasOwn(tools, name)),
+                todoAvailable: Object.hasOwn(tools, 'todo')
               };
               for (const name of names) {
                 try {
@@ -1069,25 +1087,17 @@ describe('Code Mode SDK and protocol integration', () => {
             'exec_wait',
             'sleep'
           ]);
-          expect(effectiveInstructions(request)).toContain(
-            'Available client tools: apply_patch, code_exec, code_exec_wait, exec, exec_wait, sleep.'
-          );
-          expect(effectiveInstructions(request)).toContain('Code Mode Only');
-          const onlyLine = /Code Mode Only: ([^.]+) are callable/.exec(
-            effectiveInstructions(request)
-          )?.[1];
-          expect(onlyLine).toBeDefined();
-          expect(onlyLine!.split(', ')).not.toContain('exec');
-          expect(onlyLine).not.toContain('apply_patch');
-          expect(onlyLine).not.toContain('exec_wait');
-          expect(onlyLine!.split(', ')).toContain('read');
+          expect(effectiveInstructions(request)).not.toContain('Available client tools:');
+          expect(effectiveInstructions(request)).not.toContain('Code Mode Only:');
           expect(effectiveInstructions(request)).not.toContain('# Subagents');
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
           const directory = JSON.parse(description.split('\nProgrammatic tools: ')[1]!);
-          expect(directory.tools).toContainEqual(
+          expect(directory).toContainEqual(
             expect.objectContaining({
               name: 'read',
-              description: expect.stringMatching(/rg --files.*rg -n/),
+              description: expect.stringMatching(
+                /Call only as tools\.read[\s\S]*rg --files.*rg -n/
+              ),
               inputSchema: expect.objectContaining({ required: ['reads'] })
             })
           );
@@ -1448,7 +1458,7 @@ describe('Code Mode SDK and protocol integration', () => {
         }
         const wire = JSON.stringify(server.requests[0]);
         expect(wire).toContain('Programmatic tools');
-        expect(wire).toContain('callableNames');
+        expect(wire).not.toContain('callableNames');
         expect(wire).not.toContain('ToolResults');
         expect(wire).not.toContain('"outputSchema":');
         expect(await readFile(join(workspace, 'output.txt'), 'utf8')).toBe('done\n');
@@ -1698,7 +1708,7 @@ describe('Code Mode SDK and protocol integration', () => {
           (tool) => tool.name === 'code_exec'
         )?.description;
         expect(childCodeModeDescription).toContain('Programmatic tools');
-        expect(childCodeModeDescription).toContain('callableNames');
+        expect(childCodeModeDescription).not.toContain('callableNames');
         expect(childCodeModeDescription).not.toContain('ToolResults');
         expect(childCodeModeDescription).toContain('"agent_start"');
         expect(childCodeModeDescription).toContain('Call directly or as tools.exec');

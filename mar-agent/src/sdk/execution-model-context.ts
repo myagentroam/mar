@@ -202,21 +202,19 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
       // Compact can run before normal prompt composition after an upgrade.
       // Revoke retired SDK instructions before either path projects the world state.
       if (worldState.promptSnapshot !== undefined) {
+        const isRetiredSdkPrompt = (part: { id: string; source: string }) =>
+          part.source === 'sdk' && (part.id === 'core:long-running' || part.id === 'core:tools');
         // A manual Compact's instruction anchor may precede the last Run's prompt blocks.
         const retiredPromptAnchor = worldState.entries.reduce(
           (anchor, entry) =>
-            entry.block?.id === 'core:long-running' && entry.block.source === 'sdk'
-              ? Math.max(anchor, entry.index)
-              : anchor,
+            entry.block && isRetiredSdkPrompt(entry.block) ? Math.max(anchor, entry.index) : anchor,
           instructionInsertIndex
         );
         const migrated = updatePromptWorldState(
           worldState,
           retiredPromptAnchor,
           worldState.promptSnapshot.filter(
-            (part) =>
-              part.id !== 'core:skill-catalog' &&
-              !(part.id === 'core:long-running' && part.source === 'sdk')
+            (part) => part.id !== 'core:skill-catalog' && !isRetiredSdkPrompt(part)
           )
         );
         if (migrated !== worldState) await commitWorldState(migrated);

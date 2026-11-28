@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { McpCatalogEntry } from '../../../packages/protocol/src/mcp.js';
 import { McpInstallationVerifier } from '../../src/service/mcp-installation-verifier.js';
 
@@ -91,6 +93,31 @@ describe('Node MCP installation verification', () => {
         cwd: process.cwd()
       })
     ).resolves.toBeUndefined();
+  });
+
+  it('verifies stdio MCP despite a burst of stderr before initialization', async () => {
+    const fixture = fileURLToPath(new URL('../support/mar-agent-mcp-server.mjs', import.meta.url));
+    // Bound the regression without changing the verifier's production deadline.
+    const connect = Client.prototype.connect;
+    const boundedConnect = vi.spyOn(Client.prototype, 'connect').mockImplementationOnce(function (
+      this: Client,
+      transport,
+      options
+    ) {
+      return connect.call(this, transport, { ...options, timeout: 2_000 });
+    });
+    try {
+      await expect(
+        new McpInstallationVerifier().verify({
+          entry: stdioEntry(process.execPath, [fixture]),
+          configuration: { environment: { MAR_TEST_MCP_STDERR_BURST: { secretName: 'burst' } } },
+          secrets: { burst: '1' },
+          cwd: process.cwd()
+        })
+      ).resolves.toBeUndefined();
+    } finally {
+      boundedConnect.mockRestore();
+    }
   });
 
   it('normalizes a missing command to a stable error', async () => {

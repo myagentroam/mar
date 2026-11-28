@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/node",
-  "version": "0.15.29",
+  "version": "0.15.30",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/myagentroam/mar.git",
@@ -51,7 +51,7 @@
     "@anthropic-ai/claude-agent-sdk": "0.3.233",
     "@modelcontextprotocol/sdk": "1.32.0",
     "@myagentroam/agent": "workspace:*",
-    "@myagentroam/binaries": "workspace:0.10.4",
+    "@myagentroam/binaries": "workspace:0.10.5",
     "@myagentroam/protocol": "workspace:*",
     "@opencode-ai/sdk": "1.18.20",
     "js-yaml": "4.3.2",

@@ -82,16 +82,18 @@ export async function startManagedSearch(
       }
       return false;
     },
-    stop: () =>
+    stop: (options?: { requireGracefulExit: boolean }) =>
       (stopping ??= (async () => {
         const pid = child.pid;
         if (pid === undefined) {
           await exited;
+          if (options?.requireGracefulExit) throw new Error('QUICK_START_SEARCH_STOP_FAILED');
           return;
         }
         try {
-          if (!ended) child.kill('SIGTERM');
-          else if (await ownedGroupHasLiveProcesses(pid)) signalOwnedProcessGroup(pid, 'SIGTERM');
+          const requestedStop = !ended && child.kill('SIGTERM');
+          if (!requestedStop && (await ownedGroupHasLiveProcesses(pid)))
+            signalOwnedProcessGroup(pid, 'SIGTERM');
           let cleared = await waitForOwnedGroupExit(pid, 15_000);
           if (!cleared) {
             signalOwnedProcessGroup(pid, 'SIGKILL');
@@ -102,6 +104,9 @@ export async function startManagedSearch(
           }
           const result = await Promise.race([exited, delay(5_000, undefined, { ref: false })]);
           if (result === undefined) throw new Error('QUICK_START_SEARCH_RECLAIM_FAILED');
+          // An already-dead or signaled leader is reclaimable but is not a successful setup check.
+          if (options?.requireGracefulExit && (!requestedStop || result !== 0))
+            throw new Error('QUICK_START_SEARCH_STOP_FAILED');
           if (result !== 0 && result !== null) throw new Error('QUICK_START_SEARCH_STOP_FAILED');
         } catch (error) {
           if (error instanceof Error && error.message.startsWith('QUICK_START_SEARCH_'))

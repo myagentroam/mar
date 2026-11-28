@@ -32,7 +32,8 @@ export class McpInstallationVerifier {
                   ...resolveReferences(input.configuration.environment, input.secrets)
                 },
                 cwd: input.cwd,
-                stderr: 'pipe'
+                // Validation does not read logs; an unread pipe can block initialization.
+                stderr: 'ignore'
               })
             );
           } else {

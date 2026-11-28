@@ -62,7 +62,7 @@ it('allows all six delegation tools in the live cell catalog and executes a prog
     (_request, index) =>
       index === 0
         ? call('code_exec', {
-            code: "await tools.agent_list({}); observe.text(JSON.stringify({eligible:catalog.tools().filter((tool)=>tool.name.startsWith('agent_')).map((tool)=>tool.name),read:catalog.tools().some((tool)=>tool.name==='read')}));"
+            code: "await tools.agent_list({}); observe.text(JSON.stringify({eligible:Object.keys(tools).filter((name)=>name.startsWith('agent_')),read:Object.hasOwn(tools,'read')}));"
           })
         : answer(),
     true

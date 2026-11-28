@@ -6,12 +6,12 @@ settings:
   injectWorkspacePackages: true
 
 overrides:
-  '@myagentroam/binaries-linux-x64': workspace:0.10.4
-  '@myagentroam/binaries-linux-arm64': workspace:0.10.4
-  '@myagentroam/binaries-darwin-x64': workspace:0.10.4
-  '@myagentroam/binaries-darwin-arm64': workspace:0.10.4
-  '@myagentroam/binaries-win32-x64': workspace:0.10.4
-  '@myagentroam/binaries-win32-arm64': workspace:0.10.4
+  '@myagentroam/binaries-linux-x64': workspace:0.10.5
+  '@myagentroam/binaries-linux-arm64': workspace:0.10.5
+  '@myagentroam/binaries-darwin-x64': workspace:0.10.5
+  '@myagentroam/binaries-darwin-arm64': workspace:0.10.5
+  '@myagentroam/binaries-win32-x64': workspace:0.10.5
+  '@myagentroam/binaries-win32-arm64': workspace:0.10.5
 
 patchedDependencies:
   '@novnc/novnc@1.7.0': 55b1c2da191bf2d9264243dd39c0f5c9848c92e3aa221c3e20b8bf2a5ba5cf1c
@@ -182,7 +182,7 @@ importers:
         specifier: workspace:*
         version: link:../mar-agent
       '@myagentroam/binaries':
-        specifier: workspace:0.10.4
+        specifier: workspace:0.10.5
         version: link:../packages/binaries
       '@myagentroam/protocol':
         specifier: workspace:*
@@ -296,22 +296,22 @@ importers:
   packages/binaries:
     optionalDependencies:
       '@myagentroam/binaries-darwin-arm64':
-        specifier: workspace:0.10.4
+        specifier: workspace:0.10.5
         version: link:../binaries-darwin-arm64
       '@myagentroam/binaries-darwin-x64':
-        specifier: workspace:0.10.4
+        specifier: workspace:0.10.5
         version: link:../binaries-darwin-x64
       '@myagentroam/binaries-linux-arm64':
-        specifier: workspace:0.10.4
+        specifier: workspace:0.10.5
         version: link:../binaries-linux-arm64
       '@myagentroam/binaries-linux-x64':
-        specifier: workspace:0.10.4
+        specifier: workspace:0.10.5
         version: link:../binaries-linux-x64
       '@myagentroam/binaries-win32-arm64':
-        specifier: workspace:0.10.4
+        specifier: workspace:0.10.5
         version: link:../binaries-win32-arm64
       '@myagentroam/binaries-win32-x64':
-        specifier: workspace:0.10.4
+        specifier: workspace:0.10.5
         version: link:../binaries-win32-x64
 
   packages/binaries-darwin-arm64: {}

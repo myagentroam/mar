@@ -583,6 +583,16 @@ describe('restricted Code Mode engine', () => {
     ).toEqual(['DENIED']);
   });
 
+  it('exposes an awaitable tool result that can be consumed with then', async () => {
+    expect(
+      await execute(`
+        const call = tools.echo({value: 1});
+        observe.text(call instanceof Promise);
+        await call.then(result => observe.text(result.data.value));
+      `)
+    ).toEqual(['false', '1']);
+  });
+
   it.each(['node:fs', 'node:child_process', 'data:text/javascript,export default 1', './local.js'])(
     'denies every module specifier: %s',
     async (specifier) => {
@@ -767,7 +777,7 @@ describe('restricted Code Mode engine', () => {
   it('exposes only frozen namespace APIs and no legacy output aliases', async () => {
     expect(
       await execute(`
-        const names = ["tools", "observe", "state", "catalog", "cell"];
+        const names = ["tools", "observe", "state", "cell"];
         const before = Object.fromEntries(names.map(name => [name, {
           frozen: Object.isFrozen(globalThis[name]),
           writable: Object.getOwnPropertyDescriptor(globalThis, name).writable,
@@ -781,7 +791,7 @@ describe('restricted Code Mode engine', () => {
     ).toEqual([
       JSON.stringify({
         before: Object.fromEntries(
-          ['tools', 'observe', 'state', 'catalog', 'cell'].map((name) => [
+          ['tools', 'observe', 'state', 'cell'].map((name) => [
             name,
             { frozen: true, writable: false, configurable: false }
           ])
@@ -816,30 +826,26 @@ describe('restricted Code Mode engine', () => {
     ]);
   });
 
-  it('returns a deeply frozen catalog snapshot without expanding the tool surface', async () => {
+  it('exposes no guest catalog and preserves the captured tool surface', async () => {
     expect(
       await execute(`
-        const entries = catalog.tools();
-        try { entries.push({ name: "hidden" }); } catch {}
-        try { entries[0].inputSchema.extra = true; } catch {}
+        let legacyError;
+        try { catalog.tools(); } catch (error) { legacyError = error.name; }
+        let hiddenError;
+        try { await tools.hidden({}); } catch (error) { hiddenError = error.code; }
         observe.text({
-          entries,
-          frozen: Object.isFrozen(entries) && Object.isFrozen(entries[0])
-            && Object.isFrozen(entries[0].inputSchema),
-          hidden: typeof tools.hidden
+          legacyError,
+          hasCatalog: Object.hasOwn(globalThis, 'catalog'),
+          names: Object.keys(tools),
+          hiddenError
         });
       `)
     ).toEqual([
       JSON.stringify({
-        entries: [
-          {
-            name: 'echo',
-            description: 'Echo the input.',
-            inputSchema: { type: 'object' }
-          }
-        ],
-        frozen: true,
-        hidden: 'function'
+        legacyError: 'ReferenceError',
+        hasCatalog: false,
+        names: ['echo'],
+        hiddenError: 'MAR_AGENT_TOOL_NOT_AVAILABLE'
       })
     ]);
   });

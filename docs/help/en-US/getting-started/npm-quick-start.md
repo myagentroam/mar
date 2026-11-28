@@ -1,6 +1,6 @@
 ---
 title: npm Quick Start
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-28
 ---
 
 # npm Quick Start
@@ -46,6 +46,10 @@ Run defaults to `127.0.0.1`. Set `MAR_SERVER_HOST` to change the listener and `M
 Node updates with Server's exact dependency, not through a separate push upgrade in Node management. Do not delete the deployment directory, recreate Node identity, or change `allowedRoots` to update. Repeating setup does not update the npm program. For separately managed Nodes, see [Upgrade MyAgentRoam](../deployment/upgrade.md).
 
 These steps update the Server/Node npm programs, not existing managed MySQL or search components. Check the target release notes before updating; follow any required component migration instructions rather than deleting installation records to force a reinstall.
+
+To upgrade local managed search, stop `run`, back up `server.json`, then use the same configuration with `npx --no-install mar-server setup`. If this npm version supports the upgrade, `setup` prepares and checks search in a new directory, preserving the existing port and settings. It switches only after the check succeeds. On failure, start `run` to keep using the old installation, or retry `setup`. To roll back, stop `run` and restore only `search.installation` from the backup; the old component remains in place. External or disabled search is not upgraded.
+
+To repair local managed search program files, stop `run`, then use the same configuration with `npx --no-install mar-server setup --reinstall-searxng`. This reinstalls search in a new directory even if it is already on the current version, without preparing MySQL or Node. It keeps the existing port and settings, using the defaults if the old settings file is missing. On failure it exits with a nonzero status and leaves the previous installation selected. Old directories are not removed automatically. This command does not apply to external or disabled search.
 
 ## Sign in and start work
 

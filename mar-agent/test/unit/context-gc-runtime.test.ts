@@ -275,7 +275,15 @@ describe('context GC runtime integration', () => {
         const records = await store.read(session.id);
         const checkpoint = records.find((record) => record.type === 'context.gc.completed');
         expect(checkpoint !== undefined).toBe(setting === 'auto' || setting === 'with_thought');
+        const guidance = adapter.requests[0]?.messages.find(
+          (message) => message.contextualBlock?.id === 'core:reasoning'
+        );
+        expect(guidance !== undefined).toBe(setting === 'with_thought');
         if (setting === 'with_thought') {
+          expect(guidance).toMatchObject({
+            contextualBlock: { source: 'sdk', authority: 'instruction', operation: 'replace' },
+            content: expect.stringContaining('<reasoning>')
+          });
           const priorUsage = records.find(
             (record) =>
               record.type === 'usage.updated' &&

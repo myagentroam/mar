@@ -97,7 +97,6 @@ export const conversationUiZhCN = {
       unavailable: '来源未提供输出',
       empty: '无输出',
       lineRange: 'Line range: {range}',
-      imageUnavailable: '图片预览不可用',
       compactAccepted: '已接受压缩请求',
       truncated: '[Truncated]',
       showMore: '展开更多',

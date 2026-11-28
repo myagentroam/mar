@@ -36,6 +36,52 @@ test('Dialog help closes before its modal and feedback stays with its owner', as
   await expect(page.getByText('Background saved', { exact: true })).toBeVisible();
 });
 
+for (const width of [390, 1280]) {
+  test(`Delayed feedback remains above the active Dialog scrim without focus at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 700 });
+    await page.getByRole('checkbox', { name: 'Guard close' }).check();
+    const result = page.getByText('Complete failed usage request', { exact: true });
+    const editor = page.getByRole('dialog', { name: 'Edit record' });
+    const confirmation = page.getByRole('dialog', { name: 'Discard changes?' });
+    await page.getByRole('button', { name: 'Open editor' }).click();
+    await editor.getByRole('button', { name: 'Close this dialog' }).click();
+    await expect(confirmation).toBeVisible();
+
+    for (const modal of [confirmation, editor]) {
+      // Resolve the pending result after a disabled or blurred control lost focus.
+      const activeTag = await result.evaluate((button: HTMLButtonElement) => {
+        (document.activeElement as HTMLElement | null)?.blur();
+        button.click();
+        return document.activeElement?.tagName;
+      });
+      expect(activeTag).toBe('BODY');
+
+      const feedback = modal.getByRole('alert');
+      await expect(feedback).toHaveText('Usage authentication failed.');
+      await expect(page.locator('body')).toBeFocused();
+      await expect(page.locator('body > .mar-feedback-stack')).toHaveCount(0);
+      // An actual click verifies that neither the scrim nor an inactive modal intercepts it.
+      await feedback.getByRole('button', { name: 'Close' }).click();
+      await expect(feedback).toHaveCount(0);
+      await expect(modal).toBeVisible();
+
+      if (modal === confirmation) {
+        await confirmation.getByRole('button', { name: 'Keep draft' }).click();
+        await expect(confirmation).toHaveCount(0);
+      }
+    }
+
+    await editor.getByRole('button', { name: 'Owner close' }).click();
+    await expect(editor).toHaveCount(0);
+    await result.click();
+    await expect(page.locator('body > .mar-feedback-stack').getByRole('alert')).toHaveText(
+      'Usage authentication failed.'
+    );
+  });
+}
+
 for (const dismissal of ['manual', 'automatic'] as const) {
   test(`Message feedback slides and fades on entry and ${dismissal} dismissal`, async ({
     page
@@ -230,10 +276,17 @@ test('Dialog and scrim fade together before the modal releases the page', async 
   expect(modal).toBe(true);
   await expect(page.getByText('Closed 0', { exact: true })).toBeVisible();
 
+  await page
+    .getByText('Complete failed usage request', { exact: true })
+    .evaluate((button: HTMLButtonElement) => button.click());
+
   await closingFrame.evaluate((style) => style.remove());
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
   await expect(page.getByText('Closed 1', { exact: true })).toBeVisible();
+  const feedback = page.getByRole('alert').filter({ hasText: 'Usage authentication failed.' });
+  await feedback.getByRole('button', { name: 'Close' }).click();
+  await expect(feedback).toHaveCount(0);
 });
 
 for (const width of [390, 1280]) {

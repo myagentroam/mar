@@ -1,4 +1,5 @@
 import type { ExecutionMode } from '../runtime/contracts.js';
+import { THOUGHT_TOOL_NAME } from '../runtime/context/thought-contract.js';
 import { renderPromptSections, type PromptPart } from './prompt-sections.js';
 import { compactionPrompt } from './compact.js';
 import {
@@ -9,9 +10,9 @@ import {
   securityPrompt
 } from './core.js';
 import { modePrompt } from './modes.js';
-import { toolUsagePrompt } from './workflow.js';
+import { reasoningPrompt } from './reasoning.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.85';
+export const MAR_AGENT_PROMPT_VERSION = '1.87';
 
 interface SystemPromptInput {
   mode: ExecutionMode;
@@ -38,7 +39,10 @@ export function buildSystemPromptSections(input: SystemPromptInput): readonly Pr
     ['instruction-priority', instructionPriorityPrompt],
     ['safety', securityPrompt],
     ['environment-rules', environmentPrompt(input)],
-    ['tools', input.tools.length > 0 ? toolUsagePrompt(input.tools, input.directTools) : ''],
+    [
+      'reasoning',
+      (input.directTools ?? input.tools).includes(THOUGHT_TOOL_NAME) ? reasoningPrompt : ''
+    ],
     ['interaction', input.mode === 'compact' ? null : progressCommunicationPrompt],
     [
       'mode',

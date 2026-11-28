@@ -8,7 +8,7 @@
   "targets": {
     "win32-x64": {
       "server": "win32-x64/winvnc.exe",
-      "serverSha256": "7ab89d79e519b31f4c972dd0d28454f430ce8ece00988d7ae2eb5c424fd7491b",
+      "serverSha256": "83eb70944d97afd611d6ff5bc2b6d8e8cc46df38fffd6dc201a45ac653b5c66d",
       "hooks": "win32-x64/vnchooks.dll",
       "hooksSha256": "8eb6f0f2d25f3d9fa075c311c6ad6f4d18cd4309d497f0d2a0e60b84f1fb19eb",
       "capture": "win32-x64/ddengine64.dll",

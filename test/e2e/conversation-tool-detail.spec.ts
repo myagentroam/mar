@@ -701,8 +701,10 @@ for (const { width, theme, locale } of [
       await expectUnclippedDetail(visibleDetail);
       if (name === 'view_image') {
         await expect(body.locator('img')).toHaveCount(0);
+        await expect(body).toContainText('image/png · 800 × 600');
         await expect(body).toContainText(locale === 'en-US' ? 'Source size' : '原始尺寸');
         await expect(body).toContainText('1600 × 1200');
+        await expect(body).not.toContainText(/Image preview unavailable|图片预览不可用/);
       }
       if (name === 'tool_search') {
         const more = row.getByRole('button', { name: /Show more|展开更多/ });

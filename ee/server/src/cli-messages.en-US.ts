@@ -1,6 +1,6 @@
 export const cliMessagesEnUS = {
   quickUsage:
-    'Usage: mar-server setup [--config PATH] [--no-node] [--no-searxng]\n       mar-server run [--config PATH]',
+    'Usage: mar-server setup [--config PATH] [--no-node] [--no-searxng]\n       mar-server setup --reinstall-searxng [--config PATH]\n       mar-server run [--config PATH]',
   quickInvalidArguments: 'Invalid arguments. Use mar-server --help.',
   quickNetworkInvalid:
     'MAR_PUBLIC_ORIGIN must be an HTTP or HTTPS origin without credentials, a path, query, or fragment (QUICK_START_NETWORK_INVALID).',
@@ -30,6 +30,13 @@ export const cliMessagesEnUS = {
     'Local search is unavailable. Other components remain usable; rerun setup or configure an external search endpoint.',
   quickManagedSearchFailure:
     'Local search setup failed ({code}). Other components remain usable; retry setup or configure an external search endpoint.',
+  quickManagedSearchUpgraded:
+    'Local search was upgraded. The previous installation was kept for rollback.',
+  quickManagedSearchReinstalled: 'Local search was reinstalled. Start with mar-server run.',
+  quickManagedSearchReinstallRequiresManaged:
+    'Reinstall is only available for local managed search. External and disabled search were not changed.',
+  quickManagedSearchUpgradeFailure:
+    'Local search upgrade failed ({code}). The previous installation remains selected; rerun setup to retry.',
   quickFailed: 'Quick Start failed: {code}.',
   quickReclaimFailed:
     'A managed process could not be confirmed stopped ({code}). The deployment lock has been retained. Verify that this deployment’s processes have stopped before recovering; do not remove the lock while ownership is uncertain.',
